@@ -61,6 +61,22 @@ Yeni entry'i bu bölümün hemen altına (en üste) yapıştır.
 
 ---
 
+## 2026-06-14 — Claude Opus 4.8 — iOS BUILD HAZIRLIĞI (Mac'siz, Codemagic + Sideloadly) — `ios-build` dalı push edildi
+
+**Devraldım:** #4 entry — kod tamam, analyze temiz, 196 test, açılış siyah-ekran açık. Mehmet bu turda YÖN DEĞİŞTİRDİ: **iPhone 17 Pro Max'te iOS testi** (Faz 1 boyunca iOS test edilmiyordu, artık ediliyor). "Son kontroller + animasyon/pixel doğru mu + adım adım iOS build."
+
+**Yaptıklarım:**
+- **Son kontroller ✅:** analyze temiz; mesh **oransal** çiziliyor → her boyuta ölçeklenir; `HgScreen` **SafeArea** kullanıyor → iPhone Dynamic Island/home indicator doğru; HgGlass standart BackdropFilter; orientation portraitUp + status bar transparan. Animasyon/pixel iOS için sorunsuz.
+- **iOS engelleri (kod/config) düzeltildi:** (1) `ios/Runner/Info.plist`'e NSMicrophone/Camera/PhotoLibrary UsageDescription (yoktu → çökerdi); (2) deployment target **13.0→16.0** (flutter_gemma+onnxruntime 16, whisper 15.6, mlkit 15.5) — `project.pbxproj` (3 yer) + yeni `ios/Podfile` (post_install tüm pod'ları 16.0'a sabitler); (3) kök `.gitignore`'a build/ + handoff zip/klasörleri.
+- **`codemagic.yaml`** (repo kökü): `ios-unsigned` workflow, `working_directory: Hermes/hermes`, `flutter build ios --release --no-codesign` → Payload zip → imzasız IPA artifact.
+- **Git:** origin/main yalnız "Lift Off"tu, TÜM uygulama kodu commit'siz idi → hepsi (139 dosya, build/scratch/zip hariç) yeni **`ios-build` dalında** tek commit (9e4525e) → **origin'e push edildi**. main'e dokunulmadı.
+
+**Bıraktıklarım:** **`ios-build` GitHub'da, Codemagic derlemeye hazır.** AÇIK İŞ (Mehmet yapacak, ben başlatamam): (1) Codemagic'e repo bağla → `ios-build` → `ios-unsigned` run → `Hermes-unsigned.ipa` indir; (2) Windows Sideloadly + ücretsiz Apple ID ile iPhone'a sideload (7 gün). **Codemagic ilk build'de pod/derleme hatası çıkabilir (gemma/onnxruntime/whisper iOS ilk kez derleniyor) → log gelince düzeltilecek.**
+
+**Sıradaki modele not:** ⚠️ **vosk_flutter_2 iOS YOK** → "fast" hands-free tier iPhone'da MissingPluginException (Whisper full/full+ çalışır; açılışta Vosk'a dokunulmuyor, app açılır). Demoda fast seçme; istenirse `Platform.isIOS`'ta fast tier gizlenebilir (yapılmadı). ⚠️ Ücretsiz Apple ID = 7 gün + bazı entitlement limiti. ⚠️ Açılış siyah-ekran (Android, #4) hâlâ açık. ⚠️ Codemagic free tier macOS dakika limitli. Mehmet kısa/net.
+
+---
+
 ## 2026-06-13 (#4) — Claude Opus 4.8 — 3. cihaz testi düzeltmeleri (overflow fit + native splash + connectivity eyebrow + OCR overlay şeffaf)
 
 **Devraldım:** Aynı oturum. Mehmet 3. testte: header overflow, açılışta hâlâ siyah ekran, eyebrow animasyonsuz/takılıyor/az dil, görsel çeviri kontrolleri yeterince şeffaf değil. (Overscroll/Manuel/boş-transkript/çökme ✅ onaylandı.)

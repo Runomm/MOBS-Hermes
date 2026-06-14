@@ -31,7 +31,11 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  use_frameworks!
+  # :static — flutter_gemma (MediaPipeTasksGenAI) + ML Kit/whisper
+  # (TensorFlowLiteC) statik xcframework getiriyor; düz use_frameworks! ile
+  # "transitive dependencies that include statically linked binaries" hatası
+  # verir. Statik linkage bunu çözer.
+  use_frameworks! :linkage => :static
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
