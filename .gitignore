@@ -6,7 +6,10 @@
 *.secret
 secrets.dart
 secrets.json
-hf_token*
+# Not: yalnız token DOSYALARI — `hf_token_store.dart` KAYNAK dosyasını
+# yakalamasın diye uzantı kısıtlı (token runtime'da girilir, repoda dosya yok).
+hf_token.txt
+hf_token.json
 **/secrets/
 **/credentials*.json
 *.keystore
