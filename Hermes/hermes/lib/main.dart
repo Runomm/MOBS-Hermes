@@ -142,7 +142,7 @@ class _ThemeFadeState extends State<_ThemeFade>
   final GlobalKey _boundaryKey = GlobalKey();
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 520),
+    duration: const Duration(milliseconds: 850), // Mehmet 2026-06-14: biraz daha yavaş
   );
   ui.Image? _snapshot;
 

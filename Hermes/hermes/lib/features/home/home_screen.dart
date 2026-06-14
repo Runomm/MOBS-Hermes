@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -47,6 +48,48 @@ class HomeScreen extends StatelessWidget {
     Navigator.of(context).push(MaterialPageRoute(builder: builder));
   }
 
+  /// Canlı transkript modları (Konferans/SmallTalk) şu an **Vosk** motoruna
+  /// dayanıyor; `vosk_flutter_2`'nin iOS implementasyonu YOK → iOS'te açılınca
+  /// "platform ios is not supported" hatası veriyordu. iOS'te çirkin hata yerine
+  /// nazik "yakında" mesajı göster (sherpa-onnx entegrasyonu beklemede, 2026-06-14).
+  void _openLiveMode(BuildContext context, WidgetBuilder builder) {
+    if (Platform.isIOS) {
+      _showIosSoon(context);
+      return;
+    }
+    _push(context, builder);
+  }
+
+  void _showIosSoon(BuildContext context) {
+    final p = HgPalette.of(context);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: p.noir ? const Color(0xFF1C1A16) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'iOS\'te yakında',
+          style: HgType.serif(20, weight: 600, color: p.text),
+        ),
+        content: Text(
+          'Canlı transkript motoru henüz iOS\'i desteklemiyor; iOS için '
+          'çevrimdışı bir streaming motoru entegre ediliyor. Bu arada Manuel '
+          've Görsel Çeviri\'yi kullanabilirsin.',
+          style: HgType.sans(14, color: p.sub, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Tamam',
+              style: HgType.sans(14, weight: 700, color: p.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = HgPalette.of(context);
@@ -56,7 +99,8 @@ class HomeScreen extends StatelessWidget {
         accent: p.conference,
         title: 'Konferans Modu',
         desc: 'Canlı çeviri, transkript ve yapay zekâ özeti',
-        onTap: () => _push(context, (_) => const ConferenceSetupScreen()),
+        onTap: () =>
+            _openLiveMode(context, (_) => const ConferenceSetupScreen()),
         onArchive: () => _push(context, (_) => const ConferenceArchiveScreen()),
         archiveTooltip: 'Konferanslarım',
       ),
@@ -65,7 +109,8 @@ class HomeScreen extends StatelessWidget {
         accent: p.smalltalk,
         title: 'SmallTalk',
         desc: 'Karşılıklı çeviri — bas konuş ya da hands-free',
-        onTap: () => _push(context, (_) => const SmallTalkSetupScreen()),
+        onTap: () =>
+            _openLiveMode(context, (_) => const SmallTalkSetupScreen()),
         onArchive: () => _push(context, (_) => const SmallTalkArchiveScreen()),
         archiveTooltip: 'SmallTalk\'larım',
       ),

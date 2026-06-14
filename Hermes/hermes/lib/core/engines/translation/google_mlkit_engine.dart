@@ -104,10 +104,21 @@ class GoogleMLKitEngine implements TranslationEngine {
       // Ayarlar "yüklü" gösterse bile gerçek dosya yoksa `translateText`
       // `Error 13 ... Translation model file not found` atar. Modeli **zorla**
       // (isModelDownloaded'a güvenmeden) indir, translator'ı yeniden kur ve bir
-      // kez daha dene. Hâlâ olmuyorsa hata propagate olur.
+      // kez daha dene. Kısa timeout → sonsuz "Çeviriliyor" yerine net hata.
       if (!_isModelMissing(e)) rethrow;
       await _forceReloadModels(fromCode, toCode);
-      return await _translator!.translateText(text);
+      try {
+        return await _translator!.translateText(text);
+      } on PlatformException catch (e2) {
+        if (_isModelMissing(e2)) {
+          throw const MlKitDownloadException(
+            'Google çeviri modeli bu cihazda yüklenemedi. İnternet bağlantını '
+            'kontrol edip tekrar dene; sorun sürerse modeli Ayarlar\'dan silip '
+            'yeniden indir.',
+          );
+        }
+        rethrow;
+      }
     }
   }
 
@@ -125,10 +136,15 @@ class GoogleMLKitEngine implements TranslationEngine {
   Future<void> _forceReloadModels(String fromCode, String toCode) async {
     final source = _languageFromCode(fromCode);
     final target = _languageFromCode(toCode);
+    // Kısa timeout (30sn): çeviri-içi yeniden indirme takılırsa kullanıcı 90sn×2
+    // beklemesin; net hataya düşsün.
+    const t = Duration(seconds: 30);
     await runMlKitDownloadWithTimeout(
-        () => _modelManager.downloadModel(source.bcpCode, isWifiRequired: false));
+        () => _modelManager.downloadModel(source.bcpCode, isWifiRequired: false),
+        timeout: t);
     await runMlKitDownloadWithTimeout(
-        () => _modelManager.downloadModel(target.bcpCode, isWifiRequired: false));
+        () => _modelManager.downloadModel(target.bcpCode, isWifiRequired: false),
+        timeout: t);
     await _translator?.close();
     _translator = OnDeviceTranslator(
       sourceLanguage: source,

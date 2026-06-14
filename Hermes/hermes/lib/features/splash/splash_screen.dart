@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
@@ -61,7 +62,15 @@ class _SplashScreenState extends State<SplashScreen>
       // init başarısızsa uygulama yine açılır; LLM kullanımı kendi hatasını verir.
     }
     // NLLB'yi arka planda RAM'e al — beklenmez.
-    unawaited(RamManager.preloadNllb());
+    //
+    // ⚠️ iOS'te DEVRE DIŞI (Mehmet 2026-06-14, KRİTİK): NLLB inince her açılışta
+    // bu preload 1.3GB ONNX modelini iOS'te belleğe almaya çalışıp **native
+    // çöküyordu** (OOM/onnxruntime; Dart try/catch native signal'ı yakalayamaz)
+    // → app açılmıyordu. NLLB iOS'te yalnız kullanıcı gerçekten çevirdiğinde
+    // (lazy) yüklensin; açılışı asla riske atma. Android'de preload kalır.
+    if (!Platform.isIOS) {
+      unawaited(RamManager.preloadNllb());
+    }
   }
 
   void _goNext() {

@@ -50,6 +50,11 @@ dependencies:
   # Kamera çekimi + galeri seçimi (Görsel Çeviri)
   image_picker: ^1.1.2
 
+  # Görüntü işleme (saf Dart) — OCR öncesi EXIF rotasyonunu PİKSELLERE işleyip
+  # dik (upright) hale getirir. iOS'te kutucuklar 90° dönük çiziliyordu çünkü
+  # ML Kit koordinat uzayı ile gösterim/boyut farklı yönü uyguluyordu (2026-06-14).
+  image: ^4.3.0
+
   # Inter font (Hermes UI estetiği)
   google_fonts: ^6.2.1
 

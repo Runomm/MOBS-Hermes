@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/engines/language_id/language_detector.dart';
@@ -119,7 +120,10 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
       maxWidth: 2400,
       maxHeight: 2400,
     );
-    return file?.path;
+    if (file == null) return null;
+    // EXIF rotasyonunu PİKSELLERE işle (dik) → ML Kit koordinatları ile
+    // gösterim/boyut aynı yönde olur, kutucuklar 90° dönük çizilmez (iOS fix).
+    return _uprightPath(file.path);
   }
 
   @override
@@ -134,6 +138,23 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
     final path = await _pickImage(source);
     if (path == null || !mounted) return; // iptal
     await _runOcr(path);
+  }
+
+  /// [path]'teki görüntüyü EXIF yönelimine göre döndürüp dik kaydeder; yeni
+  /// dosyanın yolunu döner. Çözülemezse orijinali döner. Yalnız üretim picker'ı
+  /// ([_defaultPick]) çağırır → enjekte edilen test picker'ı IO'ya girmez.
+  Future<String> _uprightPath(String path) async {
+    try {
+      final bytes = await File(path).readAsBytes();
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return path;
+      final baked = img.bakeOrientation(decoded); // EXIF → piksel, meta sıfırlanır
+      final out = '$path.upright.jpg';
+      await File(out).writeAsBytes(img.encodeJpg(baked, quality: 90));
+      return out;
+    } catch (_) {
+      return path;
+    }
   }
 
   /// Fotoğrafı OCR'la → blokları + boyutu yükle (henüz çevirmez).
