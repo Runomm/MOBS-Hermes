@@ -1,3 +1,21 @@
+/// Bir çeviri için **bağlam** — önceki konuşma turu (kaynak + çeviri, kendi
+/// dilleriyle). LLM motorlar bununla referansları çözer ve olası tanıma
+/// hatalarını düzeltir ("market" sonra "marcus" duyulursa konuya uymadığını
+/// fark edip düzeltir). MLKit gibi bağlamsız motorlar yok sayar.
+class TranslationTurn {
+  const TranslationTurn({
+    required this.fromCode,
+    required this.toCode,
+    required this.sourceText,
+    required this.translatedText,
+  });
+
+  final String fromCode;
+  final String toCode;
+  final String sourceText;
+  final String translatedText;
+}
+
 /// Strategy Pattern arayüzü — herhangi bir çeviri motoru bunu implement eder.
 /// Uygulama yalnızca bu arayüzü tanır, hangi motor olduğunu bilmez.
 ///
@@ -18,7 +36,16 @@ abstract class TranslationEngine {
 
   /// Metni kaynak dilden hedef dile çevirir.
   /// Gerekirse önce ensureModelLoaded çağrılır.
-  Future<String> translate(String text, String fromCode, String toCode);
+  ///
+  /// [context]: önceki konuşma turları (en eskiden yeniye). Bağlam-duyarlı
+  /// motorlar (LLM) referans çözümü + tanıma hatası düzeltmesi için kullanır;
+  /// bağlamsız motorlar (MLKit) yok sayar.
+  Future<String> translate(
+    String text,
+    String fromCode,
+    String toCode, {
+    List<TranslationTurn> context = const [],
+  });
 
   // ---------- Dil paketi yönetimi ----------
   // Motor bu işlemleri desteklemiyorsa (örn. tamamen online bir API),

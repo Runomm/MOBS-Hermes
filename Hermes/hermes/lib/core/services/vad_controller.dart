@@ -67,10 +67,18 @@ class VadErrorEvent extends VadUtteranceEvent {
 /// Model `assets/models/silero_vad_legacy.onnx` olarak APK'ya gömülüdür;
 /// internet bağlantısı gerekmez.
 class SileroVadController implements VadController {
-  SileroVadController({this.modelVersion = 'v4'})
-      : assert(modelVersion == 'v4' || modelVersion == 'v5');
+  SileroVadController({
+    this.modelVersion = 'v4',
+    this.preSpeechPadFrames = 3,
+  }) : assert(modelVersion == 'v4' || modelVersion == 'v5');
 
   final String modelVersion;
+
+  /// Konuşma tespitinden ÖNCE utterance'a eklenecek frame sayısı (her frame
+  /// ~96ms @16kHz). vad paketi varsayılanı 1 → konuşma başındaki ilk kelimenin
+  /// ilk yarısı kaçıyordu (Ders Modu cihaz testi, 2026-06-01). 3 ≈ ~288ms
+  /// pre-roll → kelime onset'i yakalanır.
+  final int preSpeechPadFrames;
 
   late final VadHandler _handler = VadHandler.create(isDebug: false);
   final _controller = StreamController<VadUtteranceEvent>.broadcast();
@@ -112,6 +120,8 @@ class SileroVadController implements VadController {
       model: modelVersion,
       // Modeli CDN yerine APK içindeki asset'ten yükle (offline-first).
       baseAssetPath: 'assets/models/',
+      // İlk kelimenin başını kaçırmamak için pre-roll (yukarı bak).
+      preSpeechPadFrames: preSpeechPadFrames,
     );
     _isListening = true;
   }

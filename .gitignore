@@ -1,0 +1,33 @@
+# ── Sırlar / kimlik bilgileri — ASLA commit etme ──────────────────────────
+# HF token ve benzeri anahtarlar runtime'da girilir, koda/repoya girmez.
+.env
+.env.*
+*.token
+*.secret
+secrets.dart
+secrets.json
+hf_token*
+**/secrets/
+**/credentials*.json
+*.keystore
+*.jks
+key.properties
+
+# ── Genel ─────────────────────────────────────────────────────────────────
+# Flutter app kendi .gitignore'una sahip (Hermes/hermes/.gitignore).
+# Bu kök dosyası repo genelindeki kazara çıktıları yakalar.
+*.log
+.DS_Store
+Thumbs.db
+
+# ── Throwaway / de-risk çalışma alanı (PC deneyleri, model çıktıları) ──────
+_scratch/
+Hermes/_scratch/
+
+# ── Build çıktıları (her platform; CI kendi üretir) ───────────────────────
+build/
+
+# ── Tasarım hand-off referansları (yerel; repoyu şişirmesin) ──────────────
+_handoff_ui/
+Hermes-UI-claudeDesign-Hand-off/
+Hermes-UI-claudeDesign-Hand-off.zip

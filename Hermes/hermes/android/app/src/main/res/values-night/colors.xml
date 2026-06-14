@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Açılış zemini karanlık modda da AÇIK marka rengi (#FCFBFF) — uygulama
+         varsayılanı açık tema; native splash'in "siyah" görünmesini önler
+         (Mehmet 2026-06-13: cihaz karanlık modda night launch_bg #100E14 siyah
+         görünüyordu). -->
+    <color name="launch_bg">#FCFBFF</color>
+</resources>

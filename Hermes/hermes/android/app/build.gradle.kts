@@ -25,7 +25,10 @@ android {
         applicationId = "com.mobstudios.hermes"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // vosk_flutter_2 (Türkçe ASR de-risk) minSdk 30 istiyor (Android 11+).
+        // Geçici: Vosk değerlendirmesi için yükseltildi. Vosk benimsenmezse
+        // flutter.minSdkVersion'a geri dön (eski cihaz desteği için).
+        minSdk = maxOf(flutter.minSdkVersion, 30)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

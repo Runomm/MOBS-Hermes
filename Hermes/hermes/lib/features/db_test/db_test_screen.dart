@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/database/app_database.dart';
 import '../../core/repositories/conversation_repository.dart';
+import '../../core/services/title_generator.dart';
 
 /// Step 5 cihaz testi — gerçek SQLite (Drift + sqlite3_flutter_libs) Poco
 /// X3 Pro üzerinde dosya açabiliyor mu, oturum/mesaj yazıp okuyabiliyor mu
@@ -31,9 +32,21 @@ class _DbTestScreenState extends State<DbTestScreen> {
 
   // Demo mesajları (Türkçe ↔ İngilizce).
   static const List<_DemoPair> _demoMessages = [
-    _DemoPair(lang: 'tr', source: 'Merhaba, nasılsın?', translated: 'Hello, how are you?'),
-    _DemoPair(lang: 'en', source: 'I am fine, thank you.', translated: 'İyiyim, teşekkür ederim.'),
-    _DemoPair(lang: 'tr', source: 'İki kahve lütfen.', translated: 'Two coffees please.'),
+    _DemoPair(
+      lang: 'tr',
+      source: 'Merhaba, nasılsın?',
+      translated: 'Hello, how are you?',
+    ),
+    _DemoPair(
+      lang: 'en',
+      source: 'I am fine, thank you.',
+      translated: 'İyiyim, teşekkür ederim.',
+    ),
+    _DemoPair(
+      lang: 'tr',
+      source: 'İki kahve lütfen.',
+      translated: 'Two coffees please.',
+    ),
   ];
 
   int _demoIndex = 0;
@@ -63,8 +76,7 @@ class _DbTestScreenState extends State<DbTestScreen> {
       setState(() {
         _sessions = sessions;
         _messagesBySession = byId;
-        _activeSessionId ??=
-            sessions.isNotEmpty ? sessions.first.id : null;
+        _activeSessionId ??= sessions.isNotEmpty ? sessions.first.id : null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -75,7 +87,8 @@ class _DbTestScreenState extends State<DbTestScreen> {
   Future<void> _createSession() async {
     try {
       final session = await _repo.createSession(
-        mode: SessionMode.fast,
+        mode: SessionMode.voiceTranslator,
+        quality: SessionQuality.fast,
         sourceLanguage: 'tr',
         targetLanguage: 'en',
       );
@@ -108,8 +121,9 @@ class _DbTestScreenState extends State<DbTestScreen> {
       );
       _demoIndex++;
       if (!mounted) return;
-      setState(() => _status =
-          'Mesaj #${msg.id} → oturum #$sessionId (${demo.lang}).');
+      setState(
+        () => _status = 'Mesaj #${msg.id} → oturum #$sessionId (${demo.lang}).',
+      );
       await _refresh();
     } catch (e) {
       if (!mounted) return;
@@ -121,9 +135,18 @@ class _DbTestScreenState extends State<DbTestScreen> {
     final sessionId = _activeSessionId;
     if (sessionId == null) return;
     try {
+      // 6r-f/g: Manager.end() ile aynı akış — başlık üret + yaz, sonra kapat.
+      final session = await _repo.getSession(sessionId);
+      final messages = await _repo.listMessagesForSession(sessionId);
+      final title = await const TimestampFallbackGenerator().generate(
+        mode: SessionMode.fromDbValue(session?.mode ?? 'pushToTalk'),
+        messages: messages,
+        startedAt: session?.startedAt ?? DateTime.now(),
+      );
+      await _repo.setTitle(sessionId, title);
       await _repo.endSession(sessionId);
       if (!mounted) return;
-      setState(() => _status = 'Oturum #$sessionId kapatıldı.');
+      setState(() => _status = 'Oturum #$sessionId kapatıldı · "$title"');
       await _refresh();
     } catch (e) {
       if (!mounted) return;
@@ -186,10 +209,7 @@ class _DbTestScreenState extends State<DbTestScreen> {
               ),
               child: Text(
                 _status,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFFB0B0B0),
-                ),
+                style: const TextStyle(fontSize: 12, color: Color(0xFFB0B0B0)),
               ),
             ),
             const SizedBox(height: 12),
@@ -253,9 +273,7 @@ class _SessionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: isActive
-          ? const Color(0xFF2A2440)
-          : const Color(0xFF1A1A1A),
+      color: isActive ? const Color(0xFF2A2440) : const Color(0xFF1A1A1A),
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         onTap: onTap,
@@ -276,7 +294,8 @@ class _SessionCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${session.sourceLanguage} ↔ ${session.targetLanguage} · ${session.mode}',
+                    '${session.sourceLanguage} ↔ ${session.targetLanguage} · '
+                    '${session.mode}/${session.quality}',
                     style: const TextStyle(color: Color(0xFFD0D0D0)),
                   ),
                   const Spacer(),
@@ -295,59 +314,77 @@ class _SessionCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
+                // 6r-g: başlık (kapanışta üretilir; açık oturumda henüz null).
+                session.title ?? '(başlık yok — oturumu kapat)',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontStyle: session.title == null
+                      ? FontStyle.italic
+                      : FontStyle.normal,
+                  color: session.title == null
+                      ? const Color(0xFF707070)
+                      : const Color(0xFFE0D8B0),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
                 'başladı: ${formatTime(session.startedAt)} · '
                 '${messages.length} mesaj',
                 style: const TextStyle(fontSize: 11, color: Color(0xFF808080)),
               ),
               if (messages.isNotEmpty) ...[
                 const Divider(color: Color(0xFF303030), height: 16),
-                ...messages.map((m) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2A2A2A),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              m.speakerLanguage,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFFB0B0B0),
-                              ),
+                ...messages.map(
+                  (m) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2A2A2A),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            m.speakerLanguage,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFFB0B0B0),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                m.sourceText,
+                                style: const TextStyle(
+                                  color: Color(0xFFF0F0F0),
+                                  fontSize: 13,
+                                ),
+                              ),
+                              if (m.translatedText != null)
                                 Text(
-                                  m.sourceText,
+                                  '→ ${m.translatedText}',
                                   style: const TextStyle(
-                                    color: Color(0xFFF0F0F0),
-                                    fontSize: 13,
+                                    color: Color(0xFF909090),
+                                    fontSize: 12,
+                                    fontStyle: FontStyle.italic,
                                   ),
                                 ),
-                                if (m.translatedText != null)
-                                  Text(
-                                    '→ ${m.translatedText}',
-                                    style: const TextStyle(
-                                      color: Color(0xFF909090),
-                                      fontSize: 12,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                              ],
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
-                    )),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ],
           ),

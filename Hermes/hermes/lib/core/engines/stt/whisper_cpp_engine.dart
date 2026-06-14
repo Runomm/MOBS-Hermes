@@ -11,9 +11,22 @@ import 'stt_engine.dart';
 /// - Small modeli ilk seçildiğinde Hugging Face'ten indirilir (accurate mode).
 /// Sonrasında her şey offline çalışır.
 class WhisperCppEngine implements SttEngine {
+  /// [noFallback]: `true` (varsayılan) → hız için temperature-fallback
+  /// re-decode kapalı. Düşük-kaynak dillerde (örn. Türkçe) doğruluk için
+  /// `false` geçilebilir — fallback zor segmentleri yeniden çözer, TR'yi
+  /// belirgin iyileştirir (hız maliyeti).
+  WhisperCppEngine({this.noFallback = true});
+
+  final bool noFallback;
+
   final WhisperController _controller = WhisperController();
   SttSpeedMode _speedMode = SttSpeedMode.fast;
   bool _initialized = false;
+
+  /// Çözümleme için kullanılacak thread sayısı — cihazın tüm çekirdekleri.
+  /// (Poco X3 Pro / SD860 = 8). whisper.cpp paralel çözer, çok çekirdek hızı
+  /// belirgin artırır. `WhisperController` bunu sabit 6 veriyordu.
+  static final int _threads = Platform.numberOfProcessors.clamp(2, 8);
 
   WhisperModel get _model => switch (_speedMode) {
         SttSpeedMode.fast => WhisperModel.tiny,
@@ -65,17 +78,27 @@ class WhisperCppEngine implements SttEngine {
   }) async {
     if (!_initialized) await initialize();
 
-    final result = await _controller.transcribe(
-      model: _model,
-      audioPath: audioPath,
-      lang: language,
+    // `WhisperController.transcribe` thread/decode parametrelerini sabitliyor
+    // (threads=6, noFallback=false → yavaş temperature-fallback re-decode hep
+    // açık). Alttaki `Whisper`'ı doğrudan çağırıp hız kazanıyoruz:
+    // - noFallback:true → düşük güvende segmenti tekrar tekrar çözme (en büyük
+    //   yavaşlık kaynağı); temiz konuşmada doğruluk kaybı ihmal edilebilir.
+    // - threads = tüm CPU çekirdekleri.
+    // Model (tiny/small) ve dolayısıyla doğruluk DEĞİŞMEZ.
+    final modelPath = await _controller.getPath(_model);
+    final response = await Whisper(model: _model).transcribe(
+      transcribeRequest: TranscribeRequest(
+        audio: audioPath,
+        language: language,
+        threads: _threads,
+        noFallback: noFallback,
+        isNoTimestamps: true,
+        isRealtime: true,
+      ),
+      modelPath: modelPath,
     );
 
-    final text = result?.transcription.text;
-    if (text == null) {
-      throw Exception('Whisper transkript üretemedi.');
-    }
-    return text.trim();
+    return response.text.trim();
   }
 
   @override

@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Silero VAD echo cancellation / audio mode için gerekli -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- 6r-d: BT SCO kulaklık mic yönlendirmesi (Voice Translator çift mic) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Görsel Çeviri (OCR): kamera ile fotoğraf çekme -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <application
         android:label="hermes"

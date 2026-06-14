@@ -3,25 +3,29 @@ import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hermes/core/audio/audio_input.dart';
 import 'package:hermes/core/database/app_database.dart';
-import 'package:hermes/core/engines/language_id/language_detector.dart';
 import 'package:hermes/core/engines/stt/stt_engine.dart';
 import 'package:hermes/core/engines/translation/translation_engine.dart';
 import 'package:hermes/core/engines/tts/tts_engine.dart';
 import 'package:hermes/core/repositories/conversation_repository.dart';
-import 'package:hermes/core/services/vad_controller.dart';
+import 'package:hermes/core/services/title_generator.dart';
 import 'package:hermes/core/session/conversation_session_manager.dart';
 
 // ---------------------------------------------------------------------------
 // Fake engines — gerçek native bağımlılıklardan kaçınmak için.
 // ---------------------------------------------------------------------------
 
-class FakeVadController implements VadController {
-  final _controller = StreamController<VadUtteranceEvent>.broadcast();
+/// 6r-c: Manager artık AudioInput soyutlamasını alıyor. Test'te AudioInput'u
+/// direkt fake'lemek daha doğru — alttaki VAD katmanını test etmek
+/// gereksiz çünkü bu kontrat (utterance bitmiş, samples hazır) zaten
+/// SingleMicAudioInput tarafından sağlanıyor.
+class FakeAudioInput implements AudioInput {
+  final _controller = StreamController<AudioUtteranceEvent>.broadcast();
   bool _listening = false;
 
   @override
-  Stream<VadUtteranceEvent> get events => _controller.stream;
+  Stream<AudioUtteranceEvent> get utterances => _controller.stream;
 
   @override
   bool get isListening => _listening;
@@ -42,7 +46,16 @@ class FakeVadController implements VadController {
   }
 
   /// Test API — event injekte et.
-  void emit(VadUtteranceEvent event) => _controller.add(event);
+  void emit(AudioUtteranceEvent event) => _controller.add(event);
+
+  /// Helper — sadece samples vererek primary source ile utterance gönder.
+  void emitSamples(List<double> samples) => emit(
+        AudioUtteranceEvent(
+          samples: samples,
+          source: AudioSource.primary,
+          detectedAt: DateTime.now(),
+        ),
+      );
 }
 
 class FakeSttEngine implements SttEngine {
@@ -53,13 +66,20 @@ class FakeSttEngine implements SttEngine {
   set fixedTranscript(String v) => _fixedTranscript = v;
 
   int transcribeCallCount = 0;
+  String? lastLanguage;
+  SttSpeedMode _speedMode = SttSpeedMode.fast;
+
+  /// Set edilirse `transcribeFile` bu completer tamamlanana kadar bekler —
+  /// backpressure / end()-sırasında-takılma testleri için yavaş transcribe
+  /// simülasyonu.
+  Completer<void>? transcribeGate;
 
   @override
   String get engineName => 'FakeStt';
   @override
   bool get isOfflineCapable => true;
   @override
-  SttSpeedMode get speedMode => SttSpeedMode.fast;
+  SttSpeedMode get speedMode => _speedMode;
 
   @override
   Future<void> initialize() async {}
@@ -68,11 +88,13 @@ class FakeSttEngine implements SttEngine {
   Future<String> transcribeFile(String audioPath,
       {String language = 'auto'}) async {
     transcribeCallCount++;
+    lastLanguage = language;
+    if (transcribeGate != null) await transcribeGate!.future;
     return _fixedTranscript;
   }
 
   @override
-  Future<void> setSpeedMode(SttSpeedMode mode) async {}
+  Future<void> setSpeedMode(SttSpeedMode mode) async => _speedMode = mode;
 
   @override
   Future<void> dispose() async {}
@@ -83,6 +105,7 @@ class FakeTranslationEngine implements TranslationEngine {
   String? lastFrom;
   String? lastTo;
   String? lastText;
+  List<TranslationTurn> lastContext = const [];
   Exception? throwOnTranslate;
 
   @override
@@ -94,12 +117,18 @@ class FakeTranslationEngine implements TranslationEngine {
   Future<void> ensureModelLoaded(String fromCode, String toCode) async {}
 
   @override
-  Future<String> translate(String text, String fromCode, String toCode) async {
+  Future<String> translate(
+    String text,
+    String fromCode,
+    String toCode, {
+    List<TranslationTurn> context = const [],
+  }) async {
     if (throwOnTranslate != null) throw throwOnTranslate!;
     translateCallCount++;
     lastFrom = fromCode;
     lastTo = toCode;
     lastText = text;
+    lastContext = List.of(context);
     return '[$fromCode→$toCode] $text';
   }
 
@@ -151,32 +180,6 @@ class FakeTtsEngine implements TtsEngine {
   Future<void> dispose() async {}
 }
 
-class FakeLanguageDetector implements LanguageDetector {
-  FakeLanguageDetector({this.result});
-
-  LanguageDetectionResult? result;
-
-  @override
-  String get engineName => 'FakeLangId';
-  @override
-  bool get isOfflineCapable => true;
-
-  @override
-  Future<void> initialize() async {}
-
-  @override
-  Future<LanguageDetectionResult?> detect(String text,
-      {double minConfidence = 0.6}) async {
-    final r = result;
-    if (r == null) return null;
-    if (r.confidence < minConfidence) return null;
-    return r;
-  }
-
-  @override
-  Future<void> dispose() async {}
-}
-
 // ---------------------------------------------------------------------------
 // Test helper — manager'ı eşit fixture'la kuruyor.
 // ---------------------------------------------------------------------------
@@ -184,22 +187,20 @@ class FakeLanguageDetector implements LanguageDetector {
 class Fixture {
   Fixture({
     required this.manager,
-    required this.vad,
+    required this.audioInput,
     required this.stt,
     required this.translation,
     required this.tts,
-    required this.langDetector,
     required this.db,
     required this.repo,
     required this.tempDir,
   });
 
   final ConversationSessionManager manager;
-  final FakeVadController vad;
+  final FakeAudioInput audioInput;
   final FakeSttEngine stt;
   final FakeTranslationEngine translation;
   final FakeTtsEngine tts;
-  final FakeLanguageDetector langDetector;
   final AppDatabase db;
   final ConversationRepository repo;
   final Directory tempDir;
@@ -207,48 +208,66 @@ class Fixture {
   Future<void> dispose() async {
     await manager.dispose();
     await db.close();
-    await vad.dispose();
+    await audioInput.dispose();
     await tempDir.delete(recursive: true);
   }
 }
 
+/// Sabit başlık döndüren fake — Manager'ın end()'de TitleGenerator'ı çağırıp
+/// sonucu yazdığını doğrulamak için.
+class FakeTitleGenerator implements TitleGenerator {
+  FakeTitleGenerator(this.title);
+  final String title;
+  int callCount = 0;
+
+  @override
+  Future<String> generate({
+    required SessionMode mode,
+    required List<MessageRow> messages,
+    required DateTime startedAt,
+  }) async {
+    callCount++;
+    return title;
+  }
+}
+
 Future<Fixture> buildFixture({
-  SessionMode mode = SessionMode.fast,
+  SessionMode mode = SessionMode.voiceTranslator,
+  SessionQuality quality = SessionQuality.fast,
   String sourceLanguage = 'tr',
   String targetLanguage = 'en',
-  LanguageDetectionResult? detectorResult,
   String transcript = 'merhaba',
+  TitleGenerator titleGenerator = const TimestampFallbackGenerator(),
 }) async {
   final tempDir = await Directory.systemTemp.createTemp('hermes_test_');
   final db = AppDatabase.forTesting(NativeDatabase.memory());
   final repo = ConversationRepository(db);
 
-  final vad = FakeVadController();
+  final audioInput = FakeAudioInput();
   final stt = FakeSttEngine(fixedTranscript: transcript);
   final translation = FakeTranslationEngine();
   final tts = FakeTtsEngine();
-  final langDetector = FakeLanguageDetector(result: detectorResult);
 
   final manager = ConversationSessionManager(
-    vad: vad,
+    audioInput: audioInput,
     stt: stt,
     translation: translation,
     tts: tts,
-    languageDetector: langDetector,
     repository: repo,
     sourceLanguage: sourceLanguage,
     targetLanguage: targetLanguage,
     mode: mode,
+    quality: quality,
+    titleGenerator: titleGenerator,
     temporaryDirectory: () async => tempDir,
   );
 
   return Fixture(
     manager: manager,
-    vad: vad,
+    audioInput: audioInput,
     stt: stt,
     translation: translation,
     tts: tts,
-    langDetector: langDetector,
     db: db,
     repo: repo,
     tempDir: tempDir,
@@ -267,7 +286,7 @@ void main() {
         expect(f.manager.state, ConversationState.idle);
         await f.manager.start();
         expect(f.manager.state, ConversationState.listening);
-        expect(f.vad.isListening, isTrue);
+        expect(f.audioInput.isListening, isTrue);
         expect(f.manager.activeSessionId, isNotNull);
 
         final session = await f.repo.getSession(f.manager.activeSessionId!);
@@ -275,6 +294,25 @@ void main() {
         expect(session!.endedAt, isNull);
       } finally {
         await f.dispose();
+      }
+    });
+
+    test('quality → Whisper speed mode bağlanır (full=accurate, fast=fast)',
+        () async {
+      final full = await buildFixture(quality: SessionQuality.full);
+      try {
+        await full.manager.start();
+        expect(full.stt.speedMode, SttSpeedMode.accurate);
+      } finally {
+        await full.dispose();
+      }
+
+      final fast = await buildFixture(quality: SessionQuality.fast);
+      try {
+        await fast.manager.start();
+        expect(fast.stt.speedMode, SttSpeedMode.fast);
+      } finally {
+        await fast.dispose();
       }
     });
 
@@ -299,12 +337,59 @@ void main() {
         expect(f.manager.state, ConversationState.listening);
 
         final sessionId = f.manager.activeSessionId!;
+        // Boş oturum end()'de silinir (Mehmet 2026-06-11) → mesaj ekle ki kalsın.
+        await f.repo.appendMessage(
+          sessionId: sessionId,
+          speakerLanguage: 'tr',
+          sourceText: 'merhaba',
+          translatedText: 'hello',
+        );
         await f.manager.end();
         expect(f.manager.state, ConversationState.idle);
 
         final session = await f.repo.getSession(sessionId);
         expect(session, isNotNull);
         expect(session!.endedAt, isNotNull);
+      } finally {
+        await f.dispose();
+      }
+    });
+
+    test('end() başlık üretip sessions.title\'a yazar (6r-f)', () async {
+      final gen = FakeTitleGenerator('kahve siparişi');
+      final f = await buildFixture(titleGenerator: gen);
+      try {
+        await f.manager.start();
+        final sessionId = f.manager.activeSessionId!;
+        // Boş oturum end()'de silinir (Mehmet 2026-06-11) → mesaj ekle ki kalsın.
+        await f.repo.appendMessage(
+          sessionId: sessionId,
+          speakerLanguage: 'tr',
+          sourceText: 'bir kahve lütfen',
+          translatedText: 'one coffee please',
+        );
+        await f.manager.end();
+
+        expect(gen.callCount, 1);
+        final session = await f.repo.getSession(sessionId);
+        expect(session!.title, 'kahve siparişi');
+      } finally {
+        await f.dispose();
+      }
+    });
+
+    test('end() boş oturumu siler ve null döner (Mehmet 2026-06-11)', () async {
+      final gen = FakeTitleGenerator('kullanılmamalı');
+      final f = await buildFixture(titleGenerator: gen);
+      try {
+        await f.manager.start();
+        final sessionId = f.manager.activeSessionId!;
+        final kept = await f.manager.end();
+
+        expect(kept, isNull);
+        expect(gen.callCount, 0); // silinen oturum için başlık üretilmez
+        expect(await f.repo.getSession(sessionId), isNull);
+        expect(f.manager.state, ConversationState.idle);
       } finally {
         await f.dispose();
       }
@@ -350,8 +435,6 @@ void main() {
         sourceLanguage: 'tr',
         targetLanguage: 'en',
         transcript: 'merhaba dünya',
-        detectorResult:
-            const LanguageDetectionResult(languageCode: 'tr', confidence: 0.9),
       );
       try {
         await f.manager.start();
@@ -361,7 +444,7 @@ void main() {
             .cast<ConversationMessageAdded>()
             .first;
 
-        f.vad.emit(VadSpeechEnd(List<double>.filled(8000, 0.1)));
+        f.audioInput.emitSamples(List<double>.filled(8000, 0.1));
         final event = await messageAdded.timeout(const Duration(seconds: 3));
 
         expect(event.participant, ConversationParticipant.sourceSpeaker);
@@ -370,19 +453,21 @@ void main() {
         expect(event.message.translatedText, '[tr→en] Merhaba dünya');
         expect(f.translation.lastFrom, 'tr');
         expect(f.translation.lastTo, 'en');
+        // 6r-a: Whisper'a explicit language=sourceLanguage geçilir.
+        expect(f.stt.lastLanguage, 'tr');
         expect(f.tts.spokenTexts, ['[tr→en] Merhaba dünya']);
       } finally {
         await f.dispose();
       }
     });
 
-    test('target dili konuşulursa source dile çevrilir (ters yön)', () async {
+    test('secondary source → ters yön çevrilir (targetSpeaker)', () async {
+      // 6r-e: Bas Konuş üst yarı → AudioSource.secondary → hedef dili konuştu.
+      // Manager yönü çevirmeli: target→source, targetSpeaker, Whisper lang=target.
       final f = await buildFixture(
         sourceLanguage: 'tr',
         targetLanguage: 'en',
         transcript: 'hello world',
-        detectorResult:
-            const LanguageDetectionResult(languageCode: 'en', confidence: 0.95),
       );
       try {
         await f.manager.start();
@@ -392,25 +477,36 @@ void main() {
             .cast<ConversationMessageAdded>()
             .first;
 
-        f.vad.emit(VadSpeechEnd(List<double>.filled(8000, 0.1)));
+        f.audioInput.emit(
+          AudioUtteranceEvent(
+            samples: List<double>.filled(8000, 0.1),
+            source: AudioSource.secondary,
+            detectedAt: DateTime.now(),
+          ),
+        );
         final event = await messageAdded.timeout(const Duration(seconds: 3));
 
         expect(event.participant, ConversationParticipant.targetSpeaker);
+        // Ters yön: en→tr. FillerCleaner cümle başını büyütür.
+        expect(event.message.sourceText, 'Hello world');
+        expect(event.message.translatedText, '[en→tr] Hello world');
+        expect(event.message.speakerLanguage, 'en');
         expect(f.translation.lastFrom, 'en');
         expect(f.translation.lastTo, 'tr');
+        // Whisper'a hedef dil geçilmeli (konuşan üst yarı).
+        expect(f.stt.lastLanguage, 'en');
+        expect(f.tts.spokenTexts, ['[en→tr] Hello world']);
       } finally {
         await f.dispose();
       }
     });
 
-    test('aynı dil iki kez üst üste söylenir, iki ayrı mesaj eklenir', () async {
-      // Karar (c): aynı dil üst üste — sessizce devam, iki ayrı mesaj.
+    test('iki utterance üst üste, iki ayrı mesaj eklenir', () async {
+      // primary source → her ikisi de sourceSpeaker (tek yön, Ders Modu davranışı).
       final f = await buildFixture(
         sourceLanguage: 'tr',
         targetLanguage: 'en',
         transcript: 'evet',
-        detectorResult:
-            const LanguageDetectionResult(languageCode: 'tr', confidence: 0.9),
       );
       try {
         await f.manager.start();
@@ -420,8 +516,8 @@ void main() {
           if (e is ConversationMessageAdded) added.add(e);
         });
 
-        f.vad.emit(VadSpeechEnd(List<double>.filled(4000, 0.1)));
-        f.vad.emit(VadSpeechEnd(List<double>.filled(4000, 0.2)));
+        f.audioInput.emitSamples(List<double>.filled(4000, 0.1));
+        f.audioInput.emitSamples(List<double>.filled(4000, 0.2));
 
         // Kuyrukta sıralı işleneceği için biraz bekle.
         await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -440,8 +536,6 @@ void main() {
     test('boş transkript → ConversationDropped, mesaj eklenmez', () async {
       final f = await buildFixture(
         transcript: '   ',
-        detectorResult:
-            const LanguageDetectionResult(languageCode: 'tr', confidence: 0.9),
       );
       try {
         await f.manager.start();
@@ -451,61 +545,10 @@ void main() {
             .cast<ConversationDropped>()
             .first;
 
-        f.vad.emit(VadSpeechEnd(List<double>.filled(1000, 0.05)));
+        f.audioInput.emitSamples(List<double>.filled(1000, 0.05));
         final event = await dropped.timeout(const Duration(seconds: 3));
 
-        expect(event.reason, contains('boş'));
-        expect(f.translation.translateCallCount, 0);
-      } finally {
-        await f.dispose();
-      }
-    });
-
-    test('langDetect null (conf düşük) → drop, çeviri yapılmaz', () async {
-      final f = await buildFixture(
-        transcript: 'belirsiz cümle',
-        detectorResult:
-            const LanguageDetectionResult(languageCode: 'tr', confidence: 0.4),
-      );
-      try {
-        await f.manager.start();
-
-        final dropped = f.manager.eventStream
-            .where((e) => e is ConversationDropped)
-            .cast<ConversationDropped>()
-            .first;
-
-        f.vad.emit(VadSpeechEnd(List<double>.filled(1000, 0.05)));
-        final event = await dropped.timeout(const Duration(seconds: 3));
-
-        expect(event.reason, contains('belirsiz'));
-        expect(f.translation.translateCallCount, 0);
-      } finally {
-        await f.dispose();
-      }
-    });
-
-    test('yabancı dil (source/target değil) → drop', () async {
-      final f = await buildFixture(
-        sourceLanguage: 'tr',
-        targetLanguage: 'en',
-        transcript: 'Guten Tag',
-        detectorResult:
-            const LanguageDetectionResult(languageCode: 'de', confidence: 0.95),
-      );
-      try {
-        await f.manager.start();
-
-        final dropped = f.manager.eventStream
-            .where((e) => e is ConversationDropped)
-            .cast<ConversationDropped>()
-            .first;
-
-        f.vad.emit(VadSpeechEnd(List<double>.filled(1000, 0.05)));
-        final event = await dropped.timeout(const Duration(seconds: 3));
-
-        expect(event.reason, contains('Yabancı'));
-        expect(event.reason, contains('de'));
+        expect(event.reason, contains('algılanamadı'));
         expect(f.translation.translateCallCount, 0);
       } finally {
         await f.dispose();
@@ -516,8 +559,6 @@ void main() {
         () async {
       final f = await buildFixture(
         transcript: 'merhaba',
-        detectorResult:
-            const LanguageDetectionResult(languageCode: 'tr', confidence: 0.9),
       );
       f.translation.throwOnTranslate = Exception('mock fail');
 
@@ -529,7 +570,7 @@ void main() {
             .cast<ConversationErrorEvent>()
             .first;
 
-        f.vad.emit(VadSpeechEnd(List<double>.filled(1000, 0.05)));
+        f.audioInput.emitSamples(List<double>.filled(1000, 0.05));
         final event = await err.timeout(const Duration(seconds: 3));
         expect(event.message, contains('mock fail'));
 
@@ -543,11 +584,9 @@ void main() {
   });
 
   group('ConversationSessionManager — TTS feedback guard', () {
-    test('TTS oynarken VAD event → drop (feedback guard)', () async {
+    test('TTS oynarken audio event → drop (feedback guard)', () async {
       final f = await buildFixture(
         transcript: 'merhaba',
-        detectorResult:
-            const LanguageDetectionResult(languageCode: 'tr', confidence: 0.9),
       );
       // TTS uzun sürsün ki guard test edilebilsin.
       f.tts.speakDuration = const Duration(milliseconds: 500);
@@ -563,13 +602,13 @@ void main() {
         });
 
         // İlk utterance → pipeline'a girer, TTS oynamaya başlar.
-        f.vad.emit(VadSpeechEnd(List<double>.filled(1000, 0.05)));
+        f.audioInput.emitSamples(List<double>.filled(1000, 0.05));
 
         // İlk pipeline'ın TTS noktasına gelmesini bekle (~50ms yeter).
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
         // TTS oynarken yeni utterance gelir → feedback guard drop etmeli.
-        f.vad.emit(VadSpeechEnd(List<double>.filled(1000, 0.05)));
+        f.audioInput.emitSamples(List<double>.filled(1000, 0.05));
 
         // İlk TTS'in bitmesini bekle.
         await Future<void>.delayed(const Duration(milliseconds: 600));
@@ -584,16 +623,16 @@ void main() {
     });
   });
 
-  group('ConversationSessionManager — mode davranışı', () {
-    test('fast mode: TTS oynarken _speakWithMode tetiklenirse stop çağrılır',
+  group('ConversationSessionManager — quality davranışı', () {
+    test('fast quality: TTS oynarken _speakWithMode tetiklenirse stop çağrılır',
         () async {
       // Pratikte VAD guard nedeniyle bu yol açık değil; manuel TTS replay
       // (gelecek UI) için interrupt kontratını burada doğruluyoruz.
+      // 6r-b: davranış SessionMode'tan SessionQuality'ye taşındı.
       final f = await buildFixture(
-        mode: SessionMode.fast,
+        mode: SessionMode.voiceTranslator,
+        quality: SessionQuality.fast,
         transcript: 'merhaba',
-        detectorResult:
-            const LanguageDetectionResult(languageCode: 'tr', confidence: 0.9),
       );
       f.tts.speakDuration = const Duration(milliseconds: 200);
 
@@ -601,32 +640,99 @@ void main() {
         await f.manager.start();
 
         // Tek normal utterance — TTS speak çağrılır.
-        f.vad.emit(VadSpeechEnd(List<double>.filled(1000, 0.05)));
+        f.audioInput.emitSamples(List<double>.filled(1000, 0.05));
         await Future<void>.delayed(const Duration(milliseconds: 300));
 
         expect(f.tts.speakCallCount, 1);
-        // fast mode'da ilk speak başlamadan önce stop denenmedi (zaten TTS yoktu).
+        // fast quality'de ilk speak başlamadan önce stop denenmedi (zaten TTS yoktu).
         expect(f.tts.stopCallCount, 0);
       } finally {
         await f.dispose();
       }
     });
 
-    test('full mode: TTS sequential, stop çağrılmaz', () async {
+    test('full quality: TTS sequential, stop çağrılmaz', () async {
       final f = await buildFixture(
-        mode: SessionMode.full,
+        mode: SessionMode.lecture,
+        quality: SessionQuality.full,
         transcript: 'merhaba',
-        detectorResult:
-            const LanguageDetectionResult(languageCode: 'tr', confidence: 0.9),
       );
       f.tts.speakDuration = const Duration(milliseconds: 50);
 
       try {
         await f.manager.start();
-        f.vad.emit(VadSpeechEnd(List<double>.filled(1000, 0.05)));
+        f.audioInput.emitSamples(List<double>.filled(1000, 0.05));
         await Future<void>.delayed(const Duration(milliseconds: 150));
         expect(f.tts.speakCallCount, 1);
         expect(f.tts.stopCallCount, 0);
+      } finally {
+        await f.dispose();
+      }
+    });
+  });
+
+  // Uzun konferans bug'ı (2026-06-05): STT yetişemeyince kuyruk şişiyor +
+  // end() tüm backlog'u bekleyip "Bitir" takılıyordu. Fix: _stopping bayrağı
+  // (ezilmez) + backpressure sınırı.
+  group('backpressure + end() takılma fix', () {
+    test('end() in-flight transcribe takılıyken backlog\'u işlemez, '
+        'state idle\'a döner', () async {
+      final f = await buildFixture(
+        mode: SessionMode.lecture,
+        quality: SessionQuality.full,
+      );
+      try {
+        final gate = Completer<void>();
+        f.stt.transcribeGate = gate;
+        await f.manager.start();
+
+        // Burst — ilk utterance transcribe'da bloke, kalanlar kuyrukta.
+        for (var i = 0; i < 4; i++) {
+          f.audioInput.emitSamples(List<double>.filled(800, 0.05));
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+
+        // end() çağrılır (in-flight transcribe hâlâ bloke) → _stopping set.
+        final endFuture = f.manager.end();
+        gate.complete(); // in-flight transcribe döner; _stopping ile bail.
+        await endFuture;
+
+        expect(f.manager.state, ConversationState.idle);
+        // Hiçbiri çeviriye geçmemeli — transcribe sonrası _stopping bail.
+        expect(f.translation.translateCallCount, 0);
+      } finally {
+        await f.dispose();
+      }
+    });
+
+    test('kuyruk sınırı (backpressure) aşılınca fazlalık chunk düşürülür',
+        () async {
+      final f = await buildFixture(
+        mode: SessionMode.lecture,
+        quality: SessionQuality.full,
+      );
+      try {
+        final gate = Completer<void>();
+        f.stt.transcribeGate = gate;
+        await f.manager.start();
+
+        final dropped = <String>[];
+        final sub = f.manager.eventStream.listen((e) {
+          if (e is ConversationDropped) dropped.add(e.reason);
+        });
+
+        // 6 utterance burst; ilki transcribe'da bloke → kuyruk dolar, cap=3
+        // aşılınca fazlalar düşer.
+        for (var i = 0; i < 6; i++) {
+          f.audioInput.emitSamples(List<double>.filled(800, 0.05));
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+
+        expect(dropped.where((r) => r.contains('backpressure')).isNotEmpty,
+            isTrue);
+
+        gate.complete();
+        await sub.cancel();
       } finally {
         await f.dispose();
       }

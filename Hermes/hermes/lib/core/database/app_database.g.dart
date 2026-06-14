@@ -30,10 +30,26 @@ class $SessionsTable extends Sessions
     false,
     additionalChecks: GeneratedColumn.checkTextLength(
       minTextLength: 1,
-      maxTextLength: 16,
+      maxTextLength: 32,
     ),
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _qualityMeta = const VerificationMeta(
+    'quality',
+  );
+  @override
+  late final GeneratedColumn<String> quality = GeneratedColumn<String>(
+    'quality',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 16,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('fast'),
   );
   static const VerificationMeta _sourceLanguageMeta = const VerificationMeta(
     'sourceLanguage',
@@ -88,14 +104,74 @@ class $SessionsTable extends Sessions
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _crunchedAtMeta = const VerificationMeta(
+    'crunchedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> crunchedAt = GeneratedColumn<DateTime>(
+    'crunched_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _crunchTitleMeta = const VerificationMeta(
+    'crunchTitle',
+  );
+  @override
+  late final GeneratedColumn<String> crunchTitle = GeneratedColumn<String>(
+    'crunch_title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _crunchTranslationMeta = const VerificationMeta(
+    'crunchTranslation',
+  );
+  @override
+  late final GeneratedColumn<String> crunchTranslation =
+      GeneratedColumn<String>(
+        'crunch_translation',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _crunchSummaryMeta = const VerificationMeta(
+    'crunchSummary',
+  );
+  @override
+  late final GeneratedColumn<String> crunchSummary = GeneratedColumn<String>(
+    'crunch_summary',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
     mode,
+    quality,
     sourceLanguage,
     targetLanguage,
     startedAt,
     endedAt,
+    title,
+    crunchedAt,
+    crunchTitle,
+    crunchTranslation,
+    crunchSummary,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -119,6 +195,12 @@ class $SessionsTable extends Sessions
       );
     } else if (isInserting) {
       context.missing(_modeMeta);
+    }
+    if (data.containsKey('quality')) {
+      context.handle(
+        _qualityMeta,
+        quality.isAcceptableOrUnknown(data['quality']!, _qualityMeta),
+      );
     }
     if (data.containsKey('source_language')) {
       context.handle(
@@ -154,6 +236,45 @@ class $SessionsTable extends Sessions
         endedAt.isAcceptableOrUnknown(data['ended_at']!, _endedAtMeta),
       );
     }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('crunched_at')) {
+      context.handle(
+        _crunchedAtMeta,
+        crunchedAt.isAcceptableOrUnknown(data['crunched_at']!, _crunchedAtMeta),
+      );
+    }
+    if (data.containsKey('crunch_title')) {
+      context.handle(
+        _crunchTitleMeta,
+        crunchTitle.isAcceptableOrUnknown(
+          data['crunch_title']!,
+          _crunchTitleMeta,
+        ),
+      );
+    }
+    if (data.containsKey('crunch_translation')) {
+      context.handle(
+        _crunchTranslationMeta,
+        crunchTranslation.isAcceptableOrUnknown(
+          data['crunch_translation']!,
+          _crunchTranslationMeta,
+        ),
+      );
+    }
+    if (data.containsKey('crunch_summary')) {
+      context.handle(
+        _crunchSummaryMeta,
+        crunchSummary.isAcceptableOrUnknown(
+          data['crunch_summary']!,
+          _crunchSummaryMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -171,6 +292,10 @@ class $SessionsTable extends Sessions
         DriftSqlType.string,
         data['${effectivePrefix}mode'],
       )!,
+      quality: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}quality'],
+      )!,
       sourceLanguage: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}source_language'],
@@ -187,6 +312,26 @@ class $SessionsTable extends Sessions
         DriftSqlType.dateTime,
         data['${effectivePrefix}ended_at'],
       ),
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
+      crunchedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}crunched_at'],
+      ),
+      crunchTitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}crunch_title'],
+      ),
+      crunchTranslation: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}crunch_translation'],
+      ),
+      crunchSummary: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}crunch_summary'],
+      ),
     );
   }
 
@@ -199,8 +344,12 @@ class $SessionsTable extends Sessions
 class SessionRow extends DataClass implements Insertable<SessionRow> {
   final int id;
 
-  /// `fast` veya `full`.
+  /// `'lecture' | 'voiceTranslator' | 'pushToTalk'`.
   final String mode;
+
+  /// `'fast' | 'full'` — Whisper kalite seviyesi. v2'de eklendi, varsayılan
+  /// `'fast'` ile eski satırlar otomatik dolar.
+  final String quality;
 
   /// Konuşmacı A için BCP-47 (örn. `tr`).
   final String sourceLanguage;
@@ -213,24 +362,63 @@ class SessionRow extends DataClass implements Insertable<SessionRow> {
 
   /// UTC. `endSession` çağrılana kadar `null`.
   final DateTime? endedAt;
+
+  /// Oturum başlığı — internet varsa Gemini'den üretilir, yoksa timestamp
+  /// fallback (örn. "2026-05-30-14-32-18 tarihli voice translator
+  /// konuşması"). v2'de eklendi, nullable.
+  final String? title;
+
+  /// Crunch zamanı (UTC). null → crunch edilmemiş.
+  final DateTime? crunchedAt;
+
+  /// Qwen'in seçtiği başlık (konferansın adı olur). null → crunch edilmemiş.
+  final String? crunchTitle;
+
+  /// Transkriptin Qwen ile tam/temiz çevirisi. null → crunch edilmemiş.
+  final String? crunchTranslation;
+
+  /// Yapılandırılmış özet (önemli noktalar, ödevler, vb.). null → crunch yok.
+  final String? crunchSummary;
   const SessionRow({
     required this.id,
     required this.mode,
+    required this.quality,
     required this.sourceLanguage,
     required this.targetLanguage,
     required this.startedAt,
     this.endedAt,
+    this.title,
+    this.crunchedAt,
+    this.crunchTitle,
+    this.crunchTranslation,
+    this.crunchSummary,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['mode'] = Variable<String>(mode);
+    map['quality'] = Variable<String>(quality);
     map['source_language'] = Variable<String>(sourceLanguage);
     map['target_language'] = Variable<String>(targetLanguage);
     map['started_at'] = Variable<DateTime>(startedAt);
     if (!nullToAbsent || endedAt != null) {
       map['ended_at'] = Variable<DateTime>(endedAt);
+    }
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
+    if (!nullToAbsent || crunchedAt != null) {
+      map['crunched_at'] = Variable<DateTime>(crunchedAt);
+    }
+    if (!nullToAbsent || crunchTitle != null) {
+      map['crunch_title'] = Variable<String>(crunchTitle);
+    }
+    if (!nullToAbsent || crunchTranslation != null) {
+      map['crunch_translation'] = Variable<String>(crunchTranslation);
+    }
+    if (!nullToAbsent || crunchSummary != null) {
+      map['crunch_summary'] = Variable<String>(crunchSummary);
     }
     return map;
   }
@@ -239,12 +427,28 @@ class SessionRow extends DataClass implements Insertable<SessionRow> {
     return SessionsCompanion(
       id: Value(id),
       mode: Value(mode),
+      quality: Value(quality),
       sourceLanguage: Value(sourceLanguage),
       targetLanguage: Value(targetLanguage),
       startedAt: Value(startedAt),
       endedAt: endedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(endedAt),
+      title: title == null && nullToAbsent
+          ? const Value.absent()
+          : Value(title),
+      crunchedAt: crunchedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(crunchedAt),
+      crunchTitle: crunchTitle == null && nullToAbsent
+          ? const Value.absent()
+          : Value(crunchTitle),
+      crunchTranslation: crunchTranslation == null && nullToAbsent
+          ? const Value.absent()
+          : Value(crunchTranslation),
+      crunchSummary: crunchSummary == null && nullToAbsent
+          ? const Value.absent()
+          : Value(crunchSummary),
     );
   }
 
@@ -256,10 +460,18 @@ class SessionRow extends DataClass implements Insertable<SessionRow> {
     return SessionRow(
       id: serializer.fromJson<int>(json['id']),
       mode: serializer.fromJson<String>(json['mode']),
+      quality: serializer.fromJson<String>(json['quality']),
       sourceLanguage: serializer.fromJson<String>(json['sourceLanguage']),
       targetLanguage: serializer.fromJson<String>(json['targetLanguage']),
       startedAt: serializer.fromJson<DateTime>(json['startedAt']),
       endedAt: serializer.fromJson<DateTime?>(json['endedAt']),
+      title: serializer.fromJson<String?>(json['title']),
+      crunchedAt: serializer.fromJson<DateTime?>(json['crunchedAt']),
+      crunchTitle: serializer.fromJson<String?>(json['crunchTitle']),
+      crunchTranslation: serializer.fromJson<String?>(
+        json['crunchTranslation'],
+      ),
+      crunchSummary: serializer.fromJson<String?>(json['crunchSummary']),
     );
   }
   @override
@@ -268,32 +480,55 @@ class SessionRow extends DataClass implements Insertable<SessionRow> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'mode': serializer.toJson<String>(mode),
+      'quality': serializer.toJson<String>(quality),
       'sourceLanguage': serializer.toJson<String>(sourceLanguage),
       'targetLanguage': serializer.toJson<String>(targetLanguage),
       'startedAt': serializer.toJson<DateTime>(startedAt),
       'endedAt': serializer.toJson<DateTime?>(endedAt),
+      'title': serializer.toJson<String?>(title),
+      'crunchedAt': serializer.toJson<DateTime?>(crunchedAt),
+      'crunchTitle': serializer.toJson<String?>(crunchTitle),
+      'crunchTranslation': serializer.toJson<String?>(crunchTranslation),
+      'crunchSummary': serializer.toJson<String?>(crunchSummary),
     };
   }
 
   SessionRow copyWith({
     int? id,
     String? mode,
+    String? quality,
     String? sourceLanguage,
     String? targetLanguage,
     DateTime? startedAt,
     Value<DateTime?> endedAt = const Value.absent(),
+    Value<String?> title = const Value.absent(),
+    Value<DateTime?> crunchedAt = const Value.absent(),
+    Value<String?> crunchTitle = const Value.absent(),
+    Value<String?> crunchTranslation = const Value.absent(),
+    Value<String?> crunchSummary = const Value.absent(),
   }) => SessionRow(
     id: id ?? this.id,
     mode: mode ?? this.mode,
+    quality: quality ?? this.quality,
     sourceLanguage: sourceLanguage ?? this.sourceLanguage,
     targetLanguage: targetLanguage ?? this.targetLanguage,
     startedAt: startedAt ?? this.startedAt,
     endedAt: endedAt.present ? endedAt.value : this.endedAt,
+    title: title.present ? title.value : this.title,
+    crunchedAt: crunchedAt.present ? crunchedAt.value : this.crunchedAt,
+    crunchTitle: crunchTitle.present ? crunchTitle.value : this.crunchTitle,
+    crunchTranslation: crunchTranslation.present
+        ? crunchTranslation.value
+        : this.crunchTranslation,
+    crunchSummary: crunchSummary.present
+        ? crunchSummary.value
+        : this.crunchSummary,
   );
   SessionRow copyWithCompanion(SessionsCompanion data) {
     return SessionRow(
       id: data.id.present ? data.id.value : this.id,
       mode: data.mode.present ? data.mode.value : this.mode,
+      quality: data.quality.present ? data.quality.value : this.quality,
       sourceLanguage: data.sourceLanguage.present
           ? data.sourceLanguage.value
           : this.sourceLanguage,
@@ -302,6 +537,19 @@ class SessionRow extends DataClass implements Insertable<SessionRow> {
           : this.targetLanguage,
       startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
       endedAt: data.endedAt.present ? data.endedAt.value : this.endedAt,
+      title: data.title.present ? data.title.value : this.title,
+      crunchedAt: data.crunchedAt.present
+          ? data.crunchedAt.value
+          : this.crunchedAt,
+      crunchTitle: data.crunchTitle.present
+          ? data.crunchTitle.value
+          : this.crunchTitle,
+      crunchTranslation: data.crunchTranslation.present
+          ? data.crunchTranslation.value
+          : this.crunchTranslation,
+      crunchSummary: data.crunchSummary.present
+          ? data.crunchSummary.value
+          : this.crunchSummary,
     );
   }
 
@@ -310,87 +558,153 @@ class SessionRow extends DataClass implements Insertable<SessionRow> {
     return (StringBuffer('SessionRow(')
           ..write('id: $id, ')
           ..write('mode: $mode, ')
+          ..write('quality: $quality, ')
           ..write('sourceLanguage: $sourceLanguage, ')
           ..write('targetLanguage: $targetLanguage, ')
           ..write('startedAt: $startedAt, ')
-          ..write('endedAt: $endedAt')
+          ..write('endedAt: $endedAt, ')
+          ..write('title: $title, ')
+          ..write('crunchedAt: $crunchedAt, ')
+          ..write('crunchTitle: $crunchTitle, ')
+          ..write('crunchTranslation: $crunchTranslation, ')
+          ..write('crunchSummary: $crunchSummary')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, mode, sourceLanguage, targetLanguage, startedAt, endedAt);
+  int get hashCode => Object.hash(
+    id,
+    mode,
+    quality,
+    sourceLanguage,
+    targetLanguage,
+    startedAt,
+    endedAt,
+    title,
+    crunchedAt,
+    crunchTitle,
+    crunchTranslation,
+    crunchSummary,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is SessionRow &&
           other.id == this.id &&
           other.mode == this.mode &&
+          other.quality == this.quality &&
           other.sourceLanguage == this.sourceLanguage &&
           other.targetLanguage == this.targetLanguage &&
           other.startedAt == this.startedAt &&
-          other.endedAt == this.endedAt);
+          other.endedAt == this.endedAt &&
+          other.title == this.title &&
+          other.crunchedAt == this.crunchedAt &&
+          other.crunchTitle == this.crunchTitle &&
+          other.crunchTranslation == this.crunchTranslation &&
+          other.crunchSummary == this.crunchSummary);
 }
 
 class SessionsCompanion extends UpdateCompanion<SessionRow> {
   final Value<int> id;
   final Value<String> mode;
+  final Value<String> quality;
   final Value<String> sourceLanguage;
   final Value<String> targetLanguage;
   final Value<DateTime> startedAt;
   final Value<DateTime?> endedAt;
+  final Value<String?> title;
+  final Value<DateTime?> crunchedAt;
+  final Value<String?> crunchTitle;
+  final Value<String?> crunchTranslation;
+  final Value<String?> crunchSummary;
   const SessionsCompanion({
     this.id = const Value.absent(),
     this.mode = const Value.absent(),
+    this.quality = const Value.absent(),
     this.sourceLanguage = const Value.absent(),
     this.targetLanguage = const Value.absent(),
     this.startedAt = const Value.absent(),
     this.endedAt = const Value.absent(),
+    this.title = const Value.absent(),
+    this.crunchedAt = const Value.absent(),
+    this.crunchTitle = const Value.absent(),
+    this.crunchTranslation = const Value.absent(),
+    this.crunchSummary = const Value.absent(),
   });
   SessionsCompanion.insert({
     this.id = const Value.absent(),
     required String mode,
+    this.quality = const Value.absent(),
     required String sourceLanguage,
     required String targetLanguage,
     this.startedAt = const Value.absent(),
     this.endedAt = const Value.absent(),
+    this.title = const Value.absent(),
+    this.crunchedAt = const Value.absent(),
+    this.crunchTitle = const Value.absent(),
+    this.crunchTranslation = const Value.absent(),
+    this.crunchSummary = const Value.absent(),
   }) : mode = Value(mode),
        sourceLanguage = Value(sourceLanguage),
        targetLanguage = Value(targetLanguage);
   static Insertable<SessionRow> custom({
     Expression<int>? id,
     Expression<String>? mode,
+    Expression<String>? quality,
     Expression<String>? sourceLanguage,
     Expression<String>? targetLanguage,
     Expression<DateTime>? startedAt,
     Expression<DateTime>? endedAt,
+    Expression<String>? title,
+    Expression<DateTime>? crunchedAt,
+    Expression<String>? crunchTitle,
+    Expression<String>? crunchTranslation,
+    Expression<String>? crunchSummary,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (mode != null) 'mode': mode,
+      if (quality != null) 'quality': quality,
       if (sourceLanguage != null) 'source_language': sourceLanguage,
       if (targetLanguage != null) 'target_language': targetLanguage,
       if (startedAt != null) 'started_at': startedAt,
       if (endedAt != null) 'ended_at': endedAt,
+      if (title != null) 'title': title,
+      if (crunchedAt != null) 'crunched_at': crunchedAt,
+      if (crunchTitle != null) 'crunch_title': crunchTitle,
+      if (crunchTranslation != null) 'crunch_translation': crunchTranslation,
+      if (crunchSummary != null) 'crunch_summary': crunchSummary,
     });
   }
 
   SessionsCompanion copyWith({
     Value<int>? id,
     Value<String>? mode,
+    Value<String>? quality,
     Value<String>? sourceLanguage,
     Value<String>? targetLanguage,
     Value<DateTime>? startedAt,
     Value<DateTime?>? endedAt,
+    Value<String?>? title,
+    Value<DateTime?>? crunchedAt,
+    Value<String?>? crunchTitle,
+    Value<String?>? crunchTranslation,
+    Value<String?>? crunchSummary,
   }) {
     return SessionsCompanion(
       id: id ?? this.id,
       mode: mode ?? this.mode,
+      quality: quality ?? this.quality,
       sourceLanguage: sourceLanguage ?? this.sourceLanguage,
       targetLanguage: targetLanguage ?? this.targetLanguage,
       startedAt: startedAt ?? this.startedAt,
       endedAt: endedAt ?? this.endedAt,
+      title: title ?? this.title,
+      crunchedAt: crunchedAt ?? this.crunchedAt,
+      crunchTitle: crunchTitle ?? this.crunchTitle,
+      crunchTranslation: crunchTranslation ?? this.crunchTranslation,
+      crunchSummary: crunchSummary ?? this.crunchSummary,
     );
   }
 
@@ -402,6 +716,9 @@ class SessionsCompanion extends UpdateCompanion<SessionRow> {
     }
     if (mode.present) {
       map['mode'] = Variable<String>(mode.value);
+    }
+    if (quality.present) {
+      map['quality'] = Variable<String>(quality.value);
     }
     if (sourceLanguage.present) {
       map['source_language'] = Variable<String>(sourceLanguage.value);
@@ -415,6 +732,21 @@ class SessionsCompanion extends UpdateCompanion<SessionRow> {
     if (endedAt.present) {
       map['ended_at'] = Variable<DateTime>(endedAt.value);
     }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (crunchedAt.present) {
+      map['crunched_at'] = Variable<DateTime>(crunchedAt.value);
+    }
+    if (crunchTitle.present) {
+      map['crunch_title'] = Variable<String>(crunchTitle.value);
+    }
+    if (crunchTranslation.present) {
+      map['crunch_translation'] = Variable<String>(crunchTranslation.value);
+    }
+    if (crunchSummary.present) {
+      map['crunch_summary'] = Variable<String>(crunchSummary.value);
+    }
     return map;
   }
 
@@ -423,10 +755,16 @@ class SessionsCompanion extends UpdateCompanion<SessionRow> {
     return (StringBuffer('SessionsCompanion(')
           ..write('id: $id, ')
           ..write('mode: $mode, ')
+          ..write('quality: $quality, ')
           ..write('sourceLanguage: $sourceLanguage, ')
           ..write('targetLanguage: $targetLanguage, ')
           ..write('startedAt: $startedAt, ')
-          ..write('endedAt: $endedAt')
+          ..write('endedAt: $endedAt, ')
+          ..write('title: $title, ')
+          ..write('crunchedAt: $crunchedAt, ')
+          ..write('crunchTitle: $crunchTitle, ')
+          ..write('crunchTranslation: $crunchTranslation, ')
+          ..write('crunchSummary: $crunchSummary')
           ..write(')'))
         .toString();
   }
@@ -892,19 +1230,31 @@ typedef $$SessionsTableCreateCompanionBuilder =
     SessionsCompanion Function({
       Value<int> id,
       required String mode,
+      Value<String> quality,
       required String sourceLanguage,
       required String targetLanguage,
       Value<DateTime> startedAt,
       Value<DateTime?> endedAt,
+      Value<String?> title,
+      Value<DateTime?> crunchedAt,
+      Value<String?> crunchTitle,
+      Value<String?> crunchTranslation,
+      Value<String?> crunchSummary,
     });
 typedef $$SessionsTableUpdateCompanionBuilder =
     SessionsCompanion Function({
       Value<int> id,
       Value<String> mode,
+      Value<String> quality,
       Value<String> sourceLanguage,
       Value<String> targetLanguage,
       Value<DateTime> startedAt,
       Value<DateTime?> endedAt,
+      Value<String?> title,
+      Value<DateTime?> crunchedAt,
+      Value<String?> crunchTitle,
+      Value<String?> crunchTranslation,
+      Value<String?> crunchSummary,
     });
 
 final class $$SessionsTableReferences
@@ -949,6 +1299,11 @@ class $$SessionsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get quality => $composableBuilder(
+    column: $table.quality,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get sourceLanguage => $composableBuilder(
     column: $table.sourceLanguage,
     builder: (column) => ColumnFilters(column),
@@ -966,6 +1321,31 @@ class $$SessionsTableFilterComposer
 
   ColumnFilters<DateTime> get endedAt => $composableBuilder(
     column: $table.endedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get crunchedAt => $composableBuilder(
+    column: $table.crunchedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get crunchTitle => $composableBuilder(
+    column: $table.crunchTitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get crunchTranslation => $composableBuilder(
+    column: $table.crunchTranslation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get crunchSummary => $composableBuilder(
+    column: $table.crunchSummary,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1014,6 +1394,11 @@ class $$SessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get quality => $composableBuilder(
+    column: $table.quality,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get sourceLanguage => $composableBuilder(
     column: $table.sourceLanguage,
     builder: (column) => ColumnOrderings(column),
@@ -1033,6 +1418,31 @@ class $$SessionsTableOrderingComposer
     column: $table.endedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get crunchedAt => $composableBuilder(
+    column: $table.crunchedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get crunchTitle => $composableBuilder(
+    column: $table.crunchTitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get crunchTranslation => $composableBuilder(
+    column: $table.crunchTranslation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get crunchSummary => $composableBuilder(
+    column: $table.crunchSummary,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SessionsTableAnnotationComposer
@@ -1050,6 +1460,9 @@ class $$SessionsTableAnnotationComposer
   GeneratedColumn<String> get mode =>
       $composableBuilder(column: $table.mode, builder: (column) => column);
 
+  GeneratedColumn<String> get quality =>
+      $composableBuilder(column: $table.quality, builder: (column) => column);
+
   GeneratedColumn<String> get sourceLanguage => $composableBuilder(
     column: $table.sourceLanguage,
     builder: (column) => column,
@@ -1065,6 +1478,29 @@ class $$SessionsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get endedAt =>
       $composableBuilder(column: $table.endedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get crunchedAt => $composableBuilder(
+    column: $table.crunchedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get crunchTitle => $composableBuilder(
+    column: $table.crunchTitle,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get crunchTranslation => $composableBuilder(
+    column: $table.crunchTranslation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get crunchSummary => $composableBuilder(
+    column: $table.crunchSummary,
+    builder: (column) => column,
+  );
 
   Expression<T> messagesRefs<T extends Object>(
     Expression<T> Function($$MessagesTableAnnotationComposer a) f,
@@ -1122,33 +1558,57 @@ class $$SessionsTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<String> mode = const Value.absent(),
+                Value<String> quality = const Value.absent(),
                 Value<String> sourceLanguage = const Value.absent(),
                 Value<String> targetLanguage = const Value.absent(),
                 Value<DateTime> startedAt = const Value.absent(),
                 Value<DateTime?> endedAt = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<DateTime?> crunchedAt = const Value.absent(),
+                Value<String?> crunchTitle = const Value.absent(),
+                Value<String?> crunchTranslation = const Value.absent(),
+                Value<String?> crunchSummary = const Value.absent(),
               }) => SessionsCompanion(
                 id: id,
                 mode: mode,
+                quality: quality,
                 sourceLanguage: sourceLanguage,
                 targetLanguage: targetLanguage,
                 startedAt: startedAt,
                 endedAt: endedAt,
+                title: title,
+                crunchedAt: crunchedAt,
+                crunchTitle: crunchTitle,
+                crunchTranslation: crunchTranslation,
+                crunchSummary: crunchSummary,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String mode,
+                Value<String> quality = const Value.absent(),
                 required String sourceLanguage,
                 required String targetLanguage,
                 Value<DateTime> startedAt = const Value.absent(),
                 Value<DateTime?> endedAt = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<DateTime?> crunchedAt = const Value.absent(),
+                Value<String?> crunchTitle = const Value.absent(),
+                Value<String?> crunchTranslation = const Value.absent(),
+                Value<String?> crunchSummary = const Value.absent(),
               }) => SessionsCompanion.insert(
                 id: id,
                 mode: mode,
+                quality: quality,
                 sourceLanguage: sourceLanguage,
                 targetLanguage: targetLanguage,
                 startedAt: startedAt,
                 endedAt: endedAt,
+                title: title,
+                crunchedAt: crunchedAt,
+                crunchTitle: crunchTitle,
+                crunchTranslation: crunchTranslation,
+                crunchSummary: crunchSummary,
               ),
           withReferenceMapper: (p0) => p0
               .map(

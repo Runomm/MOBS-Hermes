@@ -66,5 +66,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Hermes konuşmaları çevirmek ve transkript oluşturmak için mikrofonu kullanır. Ses kaydı saklanmaz, yalnızca metin işlenir.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Hermes tabela, menü ve metinleri çevirmek için kamerayla fotoğraf çeker.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Hermes seçtiğiniz fotoğraftaki metni tanıyıp çevirmek için galeriye erişir.</string>
 </dict>
 </plist>

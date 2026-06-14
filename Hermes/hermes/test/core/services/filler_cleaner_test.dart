@@ -144,6 +144,25 @@ void main() {
       expect(result, 'Şirket toplantısı vardı.');
     });
 
+    test('Cümle başı büyük harf — Türkçe i → İ (locale fix)', () {
+      final result = cleaner.clean(
+        'istanbul güzeldi. inanılmazdı.',
+        language: 'tr',
+        level: FillerLevel.conservative,
+      );
+      // Dart toUpperCase locale bilmez ('i' → 'I'); TR'de 'i' → 'İ' olmalı.
+      expect(result, 'İstanbul güzeldi. İnanılmazdı.');
+    });
+
+    test('Cümle başı büyük harf — İngilizce i → I (TR kuralı sızmaz)', () {
+      final result = cleaner.clean(
+        'it works. indeed.',
+        language: 'en',
+        level: FillerLevel.conservative,
+      );
+      expect(result, 'It works. Indeed.');
+    });
+
     test('Noktalama öncesi boşluk silinir', () {
       final result = cleaner.clean(
         'Bugün ,  yarın  ve   sonra  .',

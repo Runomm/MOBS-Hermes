@@ -38,7 +38,7 @@ class FillerCleaner {
     }
 
     result = _normalizeWhitespace(result);
-    result = _capitalizeSentences(result);
+    result = _capitalizeSentences(result, language);
     return result;
   }
 
@@ -50,23 +50,30 @@ class FillerCleaner {
     var t = text.replaceAll(RegExp(r'\s+'), ' ');
     // replaceAllMapped: Dart'ta replaceAll backreference desteklemez,
     // o yüzden eşleşen punctuation'ı manuel geri yazıyoruz.
-    t = t.replaceAllMapped(
-      RegExp(r'\s+([,\.!\?;:])'),
-      (m) => m.group(1)!,
-    );
+    t = t.replaceAllMapped(RegExp(r'\s+([,\.!\?;:])'), (m) => m.group(1)!);
     return t.trim();
   }
 
   /// Cümle başlarındaki ilk harfi büyük yapar.
   /// "merhaba. nasılsın?" → "Merhaba. Nasılsın?"
-  String _capitalizeSentences(String text) {
+  ///
+  /// Türkçe'de `i → İ` ve `ı → I` — Dart'ın `toUpperCase`'i locale bilmez
+  /// (`'i'.toUpperCase() == 'I'`), "işte" → "Işte" olurdu.
+  String _capitalizeSentences(String text, String language) {
     if (text.isEmpty) return text;
 
+    final isTurkish = language.toLowerCase() == 'tr';
     final buffer = StringBuffer();
     var capitalizeNext = true;
     for (final char in text.split('')) {
       if (capitalizeNext && _isLetter(char)) {
-        buffer.write(char.toUpperCase());
+        buffer.write(
+          isTurkish && char == 'i'
+              ? 'İ'
+              : isTurkish && char == 'ı'
+              ? 'I'
+              : char.toUpperCase(),
+        );
         capitalizeNext = false;
       } else {
         buffer.write(char);
@@ -145,15 +152,9 @@ class FillerCleaner {
     );
   }
 
-  static final List<RegExp> _genericFillers = [
-    _ascii('m+m+'),
-    _ascii('a+a+'),
-  ];
+  static final List<RegExp> _genericFillers = [_ascii('m+m+'), _ascii('a+a+')];
 
-  static final List<RegExp> _trConservative = [
-    _tr('[Ee]e+'),
-    _tr('[Uu]hh+'),
-  ];
+  static final List<RegExp> _trConservative = [_tr('[Ee]e+'), _tr('[Uu]hh+')];
 
   static final List<RegExp> _trAggressive = [
     _tr('[Yy]ani'),
@@ -163,10 +164,7 @@ class FillerCleaner {
     _tr('[Şş]ey'),
   ];
 
-  static final List<RegExp> _enConservative = [
-    _ascii('um+'),
-    _ascii('uh+'),
-  ];
+  static final List<RegExp> _enConservative = [_ascii('um+'), _ascii('uh+')];
 
   static final List<RegExp> _enAggressive = [
     _ascii('you know'),

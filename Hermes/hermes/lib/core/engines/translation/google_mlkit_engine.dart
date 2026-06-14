@@ -1,6 +1,46 @@
+import 'dart:async';
+
 import 'package:google_mlkit_translation/google_mlkit_translation.dart';
 
 import 'translation_engine.dart';
+
+/// ML Kit dil paketi indirmesi için zaman aşımı. ML Kit çeviri modelini
+/// **tamamen Google Play Services (GMS) indirir** — biz yalnız tetikleriz.
+/// Bazı cihazlarda (öz. MIUI/Poco, agresif arka plan kısıtı) GMS indirmeyi
+/// başlatıp tamamlamıyor → `downloadModel` Future'ı **asla** çözülmüyor (sonsuz
+/// "indiriliyor"). ~30MB'lık paket yavaş mobil veride bile ~1 dk'da iner; bu süre
+/// aşılırsa GMS'in getiremediğini varsayıp net hata fırlatır (sonsuz beklemek
+/// yerine). Mehmet 2026-06-08: Poco'da 40+ dk denedi, model dizini boş kaldı.
+const Duration kMlKitDownloadTimeout = Duration(seconds: 90);
+
+/// ML Kit dil paketi GMS tarafından getirilemediğinde (zaman aşımı) fırlatılır.
+/// UI bunu yakalayıp `$e` olarak gösterir → kullanıcı **NLLB**'ye yönlendirilir
+/// (NLLB tamamen offline, GMS'siz çalışır).
+class MlKitDownloadException implements Exception {
+  const MlKitDownloadException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+/// ML Kit dil paketi indirmesini [timeout] ile sarar. Süre aşılırsa (GMS
+/// indirmeyi tamamlamıyor → Future asla çözülmüyor) [MlKitDownloadException]
+/// fırlatır; timeout-dışı hatalar olduğu gibi propagate olur. Saf/test edilebilir
+/// (platform bağımsız) — gerçek indirmeyi [download] callback'i yapar.
+Future<void> runMlKitDownloadWithTimeout(
+  Future<void> Function() download, {
+  Duration timeout = kMlKitDownloadTimeout,
+}) async {
+  try {
+    await download().timeout(timeout);
+  } on TimeoutException {
+    throw const MlKitDownloadException(
+      'Google Play çeviri modelini indiremedi (zaman aşımı). Cihazın Google '
+      'Play Servisleri modeli getiremiyor olabilir — "Akıllı (NLLB)" motorunu '
+      'seçin (tamamen çevrimdışı).',
+    );
+  }
+}
 
 /// Google ML Kit On-Device Translation motoru.
 /// İlk çağrıda ~30MB'lık dil modelini indirir, sonrasında tamamen offline çalışır.
@@ -23,12 +63,17 @@ class GoogleMLKitEngine implements TranslationEngine {
     final source = _languageFromCode(fromCode);
     final target = _languageFromCode(toCode);
 
-    // Model dosyalarını indir (yüklüyse atlar)
+    // Model dosyalarını indir (yüklüyse atlar). isWifiRequired:false — varsayılan
+    // WiFi şartı mobil veride indirmeyi ASLA başlatmıyordu (Mehmet 2026-06-08:
+    // "indiriliyor"da takılı + TR "no existing model file"). Paket ~30MB, kullanıcı
+    // indir'e bastı → mobil veriye izin ver.
     if (!await _modelManager.isModelDownloaded(source.bcpCode)) {
-      await _modelManager.downloadModel(source.bcpCode);
+      await runMlKitDownloadWithTimeout(() =>
+          _modelManager.downloadModel(source.bcpCode, isWifiRequired: false));
     }
     if (!await _modelManager.isModelDownloaded(target.bcpCode)) {
-      await _modelManager.downloadModel(target.bcpCode);
+      await runMlKitDownloadWithTimeout(() =>
+          _modelManager.downloadModel(target.bcpCode, isWifiRequired: false));
     }
 
     // Dil çifti değiştiyse translator'ı yeniden oluştur
@@ -44,7 +89,12 @@ class GoogleMLKitEngine implements TranslationEngine {
   }
 
   @override
-  Future<String> translate(String text, String fromCode, String toCode) async {
+  Future<String> translate(
+    String text,
+    String fromCode,
+    String toCode, {
+    List<TranslationTurn> context = const [], // MLKit bağlamsız → yok sayılır
+  }) async {
     await ensureModelLoaded(fromCode, toCode);
     return _translator!.translateText(text);
   }
@@ -66,7 +116,10 @@ class GoogleMLKitEngine implements TranslationEngine {
   Future<void> downloadLanguage(String code) async {
     final lang = _languageFromCode(code);
     if (await _modelManager.isModelDownloaded(lang.bcpCode)) return;
-    await _modelManager.downloadModel(lang.bcpCode);
+    // isWifiRequired:false — mobil veride de insin (varsayılan WiFi şartı takılıyordu).
+    // Timeout sargısı: GMS indirmeyi tamamlamazsa sonsuz beklemek yerine net hata.
+    await runMlKitDownloadWithTimeout(
+        () => _modelManager.downloadModel(lang.bcpCode, isWifiRequired: false));
   }
 
   @override

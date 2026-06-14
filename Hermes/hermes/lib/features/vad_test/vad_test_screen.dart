@@ -154,8 +154,8 @@ class _VadTestScreenState extends State<VadTestScreen> {
                 _isStarting
                     ? 'Hazırlanıyor…'
                     : _isListening
-                        ? 'Durdur'
-                        : 'Başlat',
+                    ? 'Durdur'
+                    : 'Başlat',
                 style: const TextStyle(fontSize: 16),
               ),
               style: FilledButton.styleFrom(
@@ -187,14 +187,14 @@ class _StatusCard extends StatelessWidget {
     final color = !isListening
         ? const Color(0xFF707070)
         : isSpeechActive
-            ? const Color(0xFF7C6FE0)
-            : const Color(0xFF50C878);
+        ? const Color(0xFF7C6FE0)
+        : const Color(0xFF50C878);
 
     final label = !isListening
         ? 'Beklemede'
         : isSpeechActive
-            ? '● Konuşma algılandı'
-            : '○ Sessizlik bekleniyor';
+        ? '● Konuşma algılandı'
+        : '○ Sessizlik bekleniyor';
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -231,9 +231,13 @@ class _CountersGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _Counter(label: 'Sözce', value: '$utteranceCount')),
+        Expanded(
+          child: _Counter(label: 'Sözce', value: '$utteranceCount'),
+        ),
         const SizedBox(width: 12),
-        Expanded(child: _Counter(label: 'Misfire', value: '$misfireCount')),
+        Expanded(
+          child: _Counter(label: 'Misfire', value: '$misfireCount'),
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: _Counter(
