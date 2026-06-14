@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:google_mlkit_translation/google_mlkit_translation.dart';
 
 import 'translation_engine.dart';
@@ -96,7 +97,45 @@ class GoogleMLKitEngine implements TranslationEngine {
     List<TranslationTurn> context = const [], // MLKit bağlamsız → yok sayılır
   }) async {
     await ensureModelLoaded(fromCode, toCode);
-    return _translator!.translateText(text);
+    try {
+      return await _translator!.translateText(text);
+    } on PlatformException catch (e) {
+      // iOS quirk (Mehmet 2026-06-14): `isModelDownloaded` **true** dese ve
+      // Ayarlar "yüklü" gösterse bile gerçek dosya yoksa `translateText`
+      // `Error 13 ... Translation model file not found` atar. Modeli **zorla**
+      // (isModelDownloaded'a güvenmeden) indir, translator'ı yeniden kur ve bir
+      // kez daha dene. Hâlâ olmuyorsa hata propagate olur.
+      if (!_isModelMissing(e)) rethrow;
+      await _forceReloadModels(fromCode, toCode);
+      return await _translator!.translateText(text);
+    }
+  }
+
+  /// "Model file not found" ailesi mi? (iOS Error 13 + Android benzerleri).
+  bool _isModelMissing(PlatformException e) {
+    final blob = '${e.code} ${e.message} ${e.details}'.toLowerCase();
+    return blob.contains('model') &&
+        (blob.contains('not found') ||
+            blob.contains('not downloaded') ||
+            blob.contains('13'));
+  }
+
+  /// Her iki dil modelini **isModelDownloaded'a bakmadan** indir + translator'ı
+  /// yeniden oluştur (stale "indirildi" bayrağını atlatır).
+  Future<void> _forceReloadModels(String fromCode, String toCode) async {
+    final source = _languageFromCode(fromCode);
+    final target = _languageFromCode(toCode);
+    await runMlKitDownloadWithTimeout(
+        () => _modelManager.downloadModel(source.bcpCode, isWifiRequired: false));
+    await runMlKitDownloadWithTimeout(
+        () => _modelManager.downloadModel(target.bcpCode, isWifiRequired: false));
+    await _translator?.close();
+    _translator = OnDeviceTranslator(
+      sourceLanguage: source,
+      targetLanguage: target,
+    );
+    _currentSource = source;
+    _currentTarget = target;
   }
 
   // ---------- Dil paketi yönetimi ----------

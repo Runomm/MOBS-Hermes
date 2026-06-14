@@ -8,12 +8,22 @@ import 'hg_tokens.dart';
 ///
 /// Reduce-motion (MediaQuery.disableAnimations) açıksa bloblar çapa noktasında
 /// sabit durur — hand-off `prefers-reduced-motion` kuralı.
+///
+/// **ISINMA FIX (2026-06-14, iOS):** Drift animasyonu varsayılan KAPALI. Sebep:
+/// animasyonlu mesh her karede yeniden boyanır; arkasında duran tüm [HgGlass]
+/// `BackdropFilter` katmanları da her karede yeniden blur'lanmak zorunda kalır.
+/// iPhone 17 Pro Max **120Hz ProMotion** ile bu sürekli GPU blur'u cihazı
+/// ısıtıyordu (NLLB/Gemma inmeden bile). Statik mesh ile blur yalnız içerik
+/// değişince yeniden hesaplanır → ısı/şarj büyük ölçüde düşer. `hg_glass.dart`
+/// zaten "mesh statik olduğundan görsel fark küçük" varsayıyordu. Dekoratif drift
+/// gerekirse tek tek `motion: true` ile açılabilir.
 class HgMeshBackground extends StatefulWidget {
-  const HgMeshBackground({super.key, this.child, this.motion = true});
+  const HgMeshBackground({super.key, this.child, this.motion = false});
 
   final Widget? child;
 
-  /// Drift animasyonu (decoratif). Kapatılırsa bloblar statik çizilir.
+  /// Drift animasyonu (decoratif). Açılırsa bloblar yavaşça sürüklenir —
+  /// **dikkat:** sürekli blur yeniden hesabı ısı yaratır (yukarıdaki nota bak).
   final bool motion;
 
   @override

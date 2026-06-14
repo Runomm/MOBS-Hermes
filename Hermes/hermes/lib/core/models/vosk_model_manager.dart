@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:vosk_flutter_2/vosk_flutter_2.dart';
 
+import '../services/cancel_token.dart';
 import 'vosk_models.dart';
 
 /// Bir dilin Vosk modelinin (örn. `vosk-model-small-tr-0.3`) indirme/durum/
@@ -40,12 +41,18 @@ class VoskModelManager {
 
   /// Modeli ağdan indirir + çıkartır. [onProgress] 0.0–1.0 indirme yüzdesi
   /// (çıkartma fazında çağrılmaz). Zaten indirilmişse anında döner.
-  Future<String> download({void Function(double progress)? onProgress}) async {
-    final client = _ProgressClient((received, total) {
-      if (onProgress != null && total != null && total > 0) {
-        onProgress(received / total);
-      }
-    });
+  Future<String> download({
+    void Function(double progress)? onProgress,
+    CancelToken? cancelToken,
+  }) async {
+    final client = _ProgressClient(
+      (received, total) {
+        if (onProgress != null && total != null && total > 0) {
+          onProgress(received / total);
+        }
+      },
+      cancelToken: cancelToken,
+    );
     final loader = ModelLoader(httpClient: client);
     try {
       return await loader.loadFromNetwork(info.url);
@@ -67,10 +74,11 @@ class VoskModelManager {
 /// `ModelLoader` içindeki `httpClient.get(...)` → `send(...)` zincirine
 /// takılır; `Response.fromStream` baytları okudukça [_onProgress] tetiklenir.
 class _ProgressClient extends http.BaseClient {
-  _ProgressClient(this._onProgress);
+  _ProgressClient(this._onProgress, {this.cancelToken});
 
   final http.Client _inner = http.Client();
   final void Function(int received, int? total) _onProgress;
+  final CancelToken? cancelToken;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
@@ -78,6 +86,10 @@ class _ProgressClient extends http.BaseClient {
     final total = response.contentLength;
     var received = 0;
     final tracked = response.stream.map((chunk) {
+      // İptal: bir sonraki parçada akışı patlat → loadFromNetwork iptal hatasıyla
+      // sonlanır (Vosk indirme/çıkartma durur). Vosk Android-only; iOS'te zaten
+      // çalışmaz ama Android indirme iptali bu yolla mümkün.
+      cancelToken?.throwIfCancelled();
       received += chunk.length;
       _onProgress(received, total);
       return chunk;

@@ -122,6 +122,18 @@ dev_dependencies:
   drift_dev: ^2.21.0
   build_runner: ^2.4.13
 
+  # Uygulama ikonu üretimi (iOS AppIcon set + Android mipmap) — tek kaynak
+  # görselden. `dart run flutter_launcher_icons` ile çalıştırılır.
+  flutter_launcher_icons: ^0.14.3
+
+# Hermes uygulama ikonu (ἙΡΜΗΣ + turuncu kanatlı asa, krem zemin). Kaynak:
+# Mehmet'in yüklediği logo (damalı şeffaflık JPG'den düz krem zemine çevrildi).
+flutter_launcher_icons:
+  image_path: "assets/icon/hermes_icon.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

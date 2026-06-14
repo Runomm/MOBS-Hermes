@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
@@ -111,10 +113,99 @@ class HermesApp extends StatelessWidget {
         // Overscroll'da mor glow/stretch yanıp sönmesi (Mehmet 2026-06-13: "çok
         // çirkin") → kaldırıldı; liquid-glass'te çıplak glow yeri yok.
         scrollBehavior: const _NoGlowScrollBehavior(),
+        // Gündüz/gece geçişi yumuşak (Mehmet 2026-06-14: "bir anda yanıp sönmesin").
+        // _ThemeFade eski temayı anlık görüntüleyip üstte yavaşça soldurur.
+        builder: (context, child) =>
+            _ThemeFade(child: child ?? const SizedBox.shrink()),
         home: SplashScreen(
           next: HomeScreen(manualBuilder: (_) => const TranslationTestScreen()),
         ),
       ),
+    );
+  }
+}
+
+/// Tema (gündüz↔gece) değişiminde **yumuşak crossfade**. [hgThemeMode] değişince
+/// MaterialApp yeni temayla yeniden çizilir; bu da renkleri **anında** çevirir
+/// (HgPalette `Theme.brightness`'tan türer → tween yok → "yanıp sönme"). Çözüm:
+/// değişim ANINDA eski kareyi `toImageSync` ile yakala, üstte göster, yeni tema
+/// altta çizilirken eski görüntüyü ~0.5s solarak kaldır → göz için yavaş geçiş.
+class _ThemeFade extends StatefulWidget {
+  const _ThemeFade({required this.child});
+  final Widget child;
+  @override
+  State<_ThemeFade> createState() => _ThemeFadeState();
+}
+
+class _ThemeFadeState extends State<_ThemeFade>
+    with SingleTickerProviderStateMixin {
+  final GlobalKey _boundaryKey = GlobalKey();
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 520),
+  );
+  ui.Image? _snapshot;
+
+  @override
+  void initState() {
+    super.initState();
+    hgThemeMode.addListener(_onThemeChange);
+    _ctrl.addStatusListener((s) {
+      if (s == AnimationStatus.completed && mounted) {
+        setState(() {
+          _snapshot?.dispose();
+          _snapshot = null;
+        });
+      }
+    });
+  }
+
+  /// Tema değişti — yeni MaterialApp build'i bu kareye işlenmeden ÖNCE (notify
+  /// senkron, rebuild ertelenmiş) eski temayı yakala.
+  void _onThemeChange() {
+    final boundary =
+        _boundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null || !boundary.attached) return;
+    try {
+      // Tam DPR (ProMotion 3×) gereksiz pahalı → 2×'le sınırla (geçişte fark yok).
+      final dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0;
+      final img = boundary.toImageSync(pixelRatio: dpr > 2.0 ? 2.0 : dpr);
+      setState(() {
+        _snapshot?.dispose();
+        _snapshot = img;
+      });
+      _ctrl.forward(from: 0);
+    } catch (_) {
+      // Yakalama başarısızsa animasyonsuz geç (çökme yok).
+    }
+  }
+
+  @override
+  void dispose() {
+    hgThemeMode.removeListener(_onThemeChange);
+    _ctrl.dispose();
+    _snapshot?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final snap = _snapshot;
+    return Stack(
+      children: [
+        RepaintBoundary(key: _boundaryKey, child: widget.child),
+        if (snap != null)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: FadeTransition(
+                opacity: Tween<double>(begin: 1, end: 0).animate(
+                  CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+                ),
+                child: RawImage(image: snap, fit: BoxFit.cover),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

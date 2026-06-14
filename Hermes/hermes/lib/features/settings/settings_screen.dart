@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/models/managed_model.dart';
-import '../../core/services/download_stats.dart';
+import '../../core/services/download_manager.dart';
 import '../../core/services/gemini_client.dart';
 import '../../core/services/gemini_key_store.dart';
 import '../../core/services/hf_token_store.dart';
@@ -33,11 +33,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// model → hazır mı (null = yükleniyor).
   final Map<ManagedModel, bool?> _ready = {};
 
-  /// İndirilmekte olan modeller → ilerleme (0–1; -1 = belirsiz).
-  final Map<ManagedModel, double> _downloading = {};
-
-  /// İndirme anlık istatistikleri (hız/boyut/ETA) — ilerleme destekleyen modeller.
-  final Map<ManagedModel, DownloadStats> _stats = {};
+  /// İndirme durumu artık ekran-üstü [DownloadManager]'da (arka planda sürer,
+  /// Ayarlar'dan çıkıp dönünce ilerleme korunur). Buradan yalnız id ile okunur.
+  /// Bir önceki notify'daki aktif id'ler → tamamlanma/iptal geçişini yakalamak için.
+  Set<String> _prevActiveIds = {};
 
   /// Silinmekte olan modeller.
   final Set<ManagedModel> _deleting = {};
@@ -51,8 +50,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     for (final m in _models) {
       _ready[m] = null;
     }
+    // Bu ekran açılmadan önce başlamış (arka planda süren) indirmeleri baz al →
+    // ilkini yanlışlıkla "tamamlandı" sayma.
+    _prevActiveIds = DownloadManager.instance.activeIds;
+    DownloadManager.instance.addListener(_onDownloadsChanged);
     unawaited(_refreshAll());
     unawaited(_loadGeminiKey());
+  }
+
+  @override
+  void dispose() {
+    DownloadManager.instance.removeListener(_onDownloadsChanged);
+    super.dispose();
+  }
+
+  /// DownloadManager her değişimde tetikler: tamamlanan/iptal edilen modellerin
+  /// hazırlığını yeniden kontrol et, sonra yeniden çiz.
+  void _onDownloadsChanged() {
+    if (!mounted) return;
+    final activeNow = DownloadManager.instance.activeIds;
+    for (final m in _models) {
+      final was = _prevActiveIds.contains(m.id);
+      final now = activeNow.contains(m.id);
+      if (was && !now) {
+        // İndirme bitti veya iptal edildi → gerçek dosya durumunu yenile.
+        unawaited(_refreshReadyFor(m));
+      }
+    }
+    _prevActiveIds = activeNow;
+    setState(() {});
+  }
+
+  Future<void> _refreshReadyFor(ManagedModel m) async {
+    bool r;
+    try {
+      r = await m.isReady();
+    } catch (_) {
+      r = false;
+    }
+    if (!mounted) return;
+    setState(() => _ready[m] = r);
+    if (r) _snack('${m.title} indirildi.'); // iptalde r=false → sessiz
   }
 
   Future<void> _loadGeminiKey() async {
@@ -119,41 +157,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final ok = await _ensureToken(m);
       if (!ok) return;
     }
-    setState(() => _downloading[m] = m.supportsProgress ? 0 : -1);
-    // Hız/ETA = kümülatif ortalama (toplam inen / toplam geçen süre) → titremez.
-    final sw = Stopwatch()..start();
-    try {
-      await m.download(
-        onProgress: m.supportsProgress
-            ? (p) {
-                if (!mounted) return;
-                final stats = DownloadStats.from(
-                  p,
-                  sw.elapsedMilliseconds,
-                  m.sizeMb,
-                );
-                setState(() {
-                  _downloading[m] = p;
-                  _stats[m] = stats;
-                });
-              }
-            : null,
-      );
-      if (!mounted) return;
-      setState(() {
-        _downloading.remove(m);
-        _stats.remove(m);
-        _ready[m] = true;
-      });
-      _snack('${m.title} indirildi.');
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _downloading.remove(m);
-        _stats.remove(m);
-      });
-      _snack('${m.title} indirilemedi: $e');
-    }
+    // İndirme ekran-üstü DownloadManager'a devredilir → Ayarlar'dan çıkılsa da
+    // arka planda sürer; ilerleme/tamamlanma listener üzerinden yansır. Hata
+    // snackbar ile bildirilir (iptal sessizce yutulur).
+    unawaited(
+      DownloadManager.instance.start(
+        m,
+        onError: (e) => _snack('${m.title} indirilemedi: $e'),
+      ),
+    );
+    _prevActiveIds = DownloadManager.instance.activeIds;
+  }
+
+  void _cancelDownload(ManagedModel m) {
+    DownloadManager.instance.cancel(m.id);
+    _snack('${m.title} indirmesi iptal ediliyor…');
   }
 
   Future<void> _delete(ManagedModel m) async {
@@ -337,12 +355,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// İlerleme çubuğu altı detay: "{inen}/{toplam} MB · {hız} MB/s · ~{eta}s".
   /// İlerleme/boyut yoksa yalnız boyut (varsa) veya boş.
-  String _downloadDetail(ManagedModel m, double progress) {
-    if (progress < 0) {
-      // Belirsiz (Whisper/MLKit, hook yok) → yalnız boyut.
+  String _downloadDetail(ManagedModel m, DownloadTask task) {
+    if (task.progress < 0) {
+      // Belirsiz (MLKit, hook yok) → yalnız boyut.
       return m.sizeMb != null ? '~${m.sizeMb} MB' : '';
     }
-    final s = _stats[m];
+    final s = task.stats;
     if (s == null || s.totalMb == null) return '';
     final dl = s.downloadedMb!.toStringAsFixed(0);
     final tot = s.totalMb!.toStringAsFixed(0);
@@ -355,8 +373,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _modelTile(HgPalette p, ManagedModel m, {required bool last}) {
     final ready = _ready[m];
-    final progress = _downloading[m];
-    final isDownloading = progress != null;
+    final task = DownloadManager.instance.taskFor(m.id);
+    final isDownloading = task != null;
+    final progress = task?.progress ?? 0;
     final isDeleting = _deleting.contains(m);
 
     return Container(
@@ -427,7 +446,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    _downloadDetail(m, progress),
+                    _downloadDetail(m, task),
                     style: HgType.sans(11.5, color: p.faint),
                   ),
                 ),
@@ -456,7 +475,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return Text('Yerleşik', style: HgType.sans(12.5, color: p.faint));
     }
     if (isDownloading) {
-      return const SizedBox(width: 24); // ilerleme aşağıda gösteriliyor
+      // Akış-bazlı (supportsProgress) indirmeler iptal edilebilir; MLKit (GMS,
+      // belirsiz) iptal edilemez → onda yalnız boşluk (ilerleme aşağıda).
+      if (!m.supportsProgress) return const SizedBox(width: 24);
+      return HgPressable(
+        onTap: () => _cancelDownload(m),
+        child: SizedBox(
+          width: 34,
+          height: 34,
+          child: Center(
+            child: Icon(Icons.close_rounded, size: 20, color: p.faint),
+          ),
+        ),
+      );
     }
     if (isDeleting) {
       return const SizedBox(

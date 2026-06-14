@@ -49,6 +49,23 @@ post_install do |installer|
     target.build_configurations.each do |config|
       # Tüm pod'ları 16.0'a sabitle (bazı pod'lar daha düşük varsayar).
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+
+      # permission_handler iOS makroları — KRİTİK. permission_handler_apple
+      # her izni `#if PERMISSION_X` ile derler ve `PermissionHandlerEnums.h`
+      # makro tanımsızsa onu **0**'a düşürür → izin kodu derlemeye HİÇ girmez →
+      # `Permission.microphone.request()` izin penceresini AÇMADAN "reddedildi"
+      # döner (SmallTalk/Konferans'ta "mikrofon izni reddedildi ama izin istemedi
+      # bile" bunun sonucuydu). Kullandığımız izinleri açıkça =1 yapıyoruz.
+      # ||= değil: flutter_additional_ios_build_settings bu anahtarı zaten
+      # tanımlamış olabilir → ||= atlanır ve makrolar uygulanmaz. Mevcut değere
+      # ekleyerek garantile.
+      existing = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+      existing = [existing] if existing.is_a?(String)
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = existing + [
+        'PERMISSION_MICROPHONE=1',
+        'PERMISSION_CAMERA=1',
+        'PERMISSION_PHOTOS=1',
+      ]
     end
   end
 end

@@ -6,6 +6,7 @@ import 'package:whisper_ggml/whisper_ggml.dart';
 import '../engines/translation/google_mlkit_engine.dart';
 import '../engines/translation/llm_translation_engine.dart';
 import '../engines/translation/translation_engine.dart';
+import '../services/cancel_token.dart';
 import '../services/hf_token_store.dart';
 import 'nllb_model_manager.dart';
 import 'vosk_model_manager.dart';
@@ -17,6 +18,11 @@ import 'vosk_models.dart';
 /// zip, ML Kit dil paketi) — UI'ın hepsini aynı kartla göstermesi için ortak
 /// kontrat. Mehmet isteği: tüm modeller görünsün, istenirse silinsin/indirilsin.
 abstract class ManagedModel {
+  /// Kararlı kimlik (DownloadManager anahtarı). Ayarlar her açılışta yeni örnek
+  /// üretir → örnek kimliğine güvenilemez; varsayılan başlık (tüm modeller tekil
+  /// başlıklı). Gerekirse alt sınıf override eder.
+  String get id => title;
+
   /// Kart başlığı, örn. "Vosk Türkçe".
   String get title;
 
@@ -43,8 +49,12 @@ abstract class ManagedModel {
   /// Model cihazda hazır (indirilmiş) mı?
   Future<bool> isReady();
 
-  /// İndir. [onProgress] 0.0–1.0 (destekliyorsa).
-  Future<void> download({void Function(double progress)? onProgress});
+  /// İndir. [onProgress] 0.0–1.0 (destekliyorsa). [cancelToken] verilirse akış
+  /// indirmeleri her parçada iptali kontrol eder ([DownloadCancelledException]).
+  Future<void> download({
+    void Function(double progress)? onProgress,
+    CancelToken? cancelToken,
+  });
 
   /// Cihazdan sil.
   Future<void> delete();
@@ -127,7 +137,10 @@ class _WhisperModel extends ManagedModel {
   }
 
   @override
-  Future<void> download({void Function(double progress)? onProgress}) async {
+  Future<void> download({
+    void Function(double progress)? onProgress,
+    CancelToken? cancelToken,
+  }) async {
     final dest = await _controller.getPath(_model);
     if (File(dest).existsSync()) {
       onProgress?.call(1.0);
@@ -149,13 +162,14 @@ class _WhisperModel extends ManagedModel {
       final total = resp.contentLength;
       var received = 0;
       sink = part.openWrite();
-      await resp.stream.forEach((chunk) {
-        sink!.add(chunk);
+      await for (final chunk in resp.stream) {
+        cancelToken?.throwIfCancelled();
+        sink.add(chunk);
         received += chunk.length;
         if (onProgress != null && total != null && total > 0) {
           onProgress(received / total);
         }
-      });
+      }
       await sink.close();
       sink = null;
       await part.rename(dest);
@@ -210,8 +224,11 @@ class _VoskLanguageModel extends ManagedModel {
   Future<bool> isReady() => _manager.isDownloaded();
 
   @override
-  Future<void> download({void Function(double progress)? onProgress}) =>
-      _manager.download(onProgress: onProgress);
+  Future<void> download({
+    void Function(double progress)? onProgress,
+    CancelToken? cancelToken,
+  }) =>
+      _manager.download(onProgress: onProgress, cancelToken: cancelToken);
 
   @override
   Future<void> delete() => _manager.delete();
@@ -249,7 +266,12 @@ class _MlKitLanguageModel extends ManagedModel {
   Future<bool> isReady() => _engine.isLanguageReady(_code);
 
   @override
-  Future<void> download({void Function(double progress)? onProgress}) =>
+  Future<void> download({
+    void Function(double progress)? onProgress,
+    CancelToken? cancelToken,
+  }) =>
+      // ML Kit indirmesi GMS tarafından yürütülür (akış yok) → iptal edilemez;
+      // token yok sayılır. supportsProgress=false zaten iptal butonu göstermez.
       _engine.downloadLanguage(_code);
 
   @override
@@ -297,9 +319,15 @@ class _LlmManagedModel extends ManagedModel {
   Future<bool> isReady() => _engine().isLanguageReady('en');
 
   @override
-  Future<void> download({void Function(double progress)? onProgress}) async {
+  Future<void> download({
+    void Function(double progress)? onProgress,
+    CancelToken? cancelToken,
+  }) async {
     // Gemma için kayıtlı HF token (NS-3); Settings indirme öncesi store'u
     // doldurur (gerekirse kullanıcıdan ister). Qwen non-gated → null.
+    // flutter_gemma native indirici iptali desteklemez → cancelToken best-effort
+    // (yalnız başlamadan kontrol; sürerkenki native indirme durdurulamaz).
+    cancelToken?.throwIfCancelled();
     final token =
         _def.requiresToken ? await HfTokenStore.instance.read() : null;
     await _engine(token).downloadModel(token: token, onProgress: onProgress);
@@ -339,14 +367,19 @@ class _NllbManagedModel extends ManagedModel {
   Future<bool> isReady() => _mgr.allDownloaded();
 
   @override
-  Future<void> download({void Function(double progress)? onProgress}) async {
+  Future<void> download({
+    void Function(double progress)? onProgress,
+    CancelToken? cancelToken,
+  }) async {
     final files = NllbModelManager.files;
     // Dosyalar çok farklı boyutta (419/470/445/5 MB) → ilerlemeyi bayt ağırlıklı
     // hesapla ki çubuk ve hız/ETA gerçekçi olsun (eşit ağırlık yanıltıcıydı).
     final totalMb = files.fold<int>(0, (s, f) => s + f.sizeMb);
     var doneMb = 0;
     for (final f in files) {
+      cancelToken?.throwIfCancelled();
       await _mgr.download(f,
+          cancelToken: cancelToken,
           onProgress: (p) =>
               onProgress?.call((doneMb + p * f.sizeMb) / totalMb));
       doneMb += f.sizeMb;

@@ -107,7 +107,18 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
   bool get _canPick => _valid && !_busy && _modelReady;
 
   Future<String?> _defaultPick(ImageSource source) async {
-    final file = await _imagePicker.pickImage(source: source, imageQuality: 90);
+    // maxWidth/maxHeight KRİTİK (iOS OCR kalitesi, 2026-06-14):
+    // (1) iPhone 48MP foto ML Kit'i boğar → metin algılanamaz/saçmalar; ~2400px'e
+    //     küçültmek doğruluğu belirgin artırır.
+    // (2) image_picker küçültürken yeniden kodlar ve EXIF rotasyonunu PİKSELLERE
+    //     işler → ML Kit metni "yan" okuyup saçmalamaz (kök neden buydu). Ham
+    //     fromFilePath rotasyon meta'sını tutarsız uyguluyordu.
+    final file = await _imagePicker.pickImage(
+      source: source,
+      imageQuality: 90,
+      maxWidth: 2400,
+      maxHeight: 2400,
+    );
     return file?.path;
   }
 

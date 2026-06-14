@@ -532,6 +532,16 @@ class _OnlineBadgeState extends State<_OnlineBadge> {
           duration: const Duration(milliseconds: 650),
           switchInCurve: Curves.easeOut,
           switchOutCurve: Curves.easeIn,
+          // Çocukları SOLA sabitle: varsayılan layoutBuilder ortalıyor → kısa
+          // kelime animasyon sırasında ortada görünüp bitince sola "zıplıyor"
+          // (jagged). Sola hizalayınca geçiş boyunca da sonrasında da aynı yer.
+          layoutBuilder: (currentChild, previousChildren) => Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              ...previousChildren,
+              ?currentChild,
+            ],
+          ),
           transitionBuilder: (child, anim) => FadeTransition(
             opacity: anim,
             child: SlideTransition(

@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../services/cancel_token.dart';
+
 /// NLLB-200-distilled-600M ONNX dosyalarının durum/silme yönetimi (Tier2).
 /// Üç parça: encoder + decoder (past'sız, step0) + decoder_with_past +
 /// ham `sentencepiece.bpe.model`. Toplam ~1.3GB.
@@ -72,7 +74,8 @@ class NllbModelManager {
   /// Tek dosyayı streamed indirir (`.part` → atomik rename). [onProgress]
   /// 0.0–1.0. Zaten indirilmişse anında döner.
   Future<void> download(NllbFile f,
-      {void Function(double progress)? onProgress}) async {
+      {void Function(double progress)? onProgress,
+      CancelToken? cancelToken}) async {
     if (await isDownloaded(f)) {
       onProgress?.call(1.0);
       return;
@@ -91,13 +94,14 @@ class NllbModelManager {
       final total = resp.contentLength;
       var received = 0;
       sink = part.openWrite();
-      await resp.stream.forEach((chunk) {
-        sink!.add(chunk);
+      await for (final chunk in resp.stream) {
+        cancelToken?.throwIfCancelled();
+        sink.add(chunk);
         received += chunk.length;
         if (onProgress != null && total != null && total > 0) {
           onProgress(received / total);
         }
-      });
+      }
       await sink.close();
       sink = null;
       await part.rename(dest);
