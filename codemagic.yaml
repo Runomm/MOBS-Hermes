@@ -31,15 +31,31 @@ workflows:
         script: |
           cd ios
           pod install --repo-update
-      - name: Build unsigned .app
-        # --no-codesign: imzalamayı atla, Sideloadly Windows'ta imzalayacak.
-        script: flutter build ios --release --no-codesign
+      - name: Flutter config (Dart/asset + xcconfig hazırla, derleme yapma)
+        script: flutter build ios --release --no-codesign --config-only
+      - name: Build unsigned .app (xcodebuild, imza tamamen kapalı)
+        # flutter build ios --no-codesign Runner target'ın otomatik imzasını
+        # tam bypass etmiyor (Development Team ister). xcodebuild'i doğrudan
+        # CODE_SIGNING_ALLOWED=NO ile çağırınca imza hiç denenmez; Dart/asset
+        # derlemesi xcode_backend (flutter assemble) build phase'inde olur.
+        script: |
+          cd ios
+          xcodebuild \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ../build/ios_unsigned \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            build
       - name: Package unsigned IPA
         script: |
-          cd build/ios/iphoneos
+          cd build/ios_unsigned/Build/Products/Release-iphoneos
           mkdir -p Payload
           cp -R Runner.app Payload/Runner.app
           zip -r9 Hermes-unsigned.ipa Payload
     artifacts:
-      - Hermes/hermes/build/ios/iphoneos/*.ipa
-      - Hermes/hermes/build/ios/iphoneos/Runner.app
+      - Hermes/hermes/build/ios_unsigned/Build/Products/Release-iphoneos/*.ipa
