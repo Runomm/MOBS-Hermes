@@ -58,4 +58,6 @@ workflows:
           cp -R Runner.app Payload/Runner.app
           zip -r9 Hermes-unsigned.ipa Payload
     artifacts:
-      - Hermes/hermes/build/ios_unsigned/Build/Products/Release-iphoneos/*.ipa
+      # Yollar working_directory'ye (Hermes/hermes) göre. **/*.ipa güvenlik ağı.
+      - build/ios_unsigned/Build/Products/Release-iphoneos/*.ipa
+      - "**/*.ipa"
