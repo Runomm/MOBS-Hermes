@@ -61,6 +61,22 @@ Yeni entry'i bu bölümün hemen altına (en üste) yapıştır.
 
 ---
 
+## 2026-06-18 (akşam) — Claude Opus 4.8 — NLLB iOS fix PUSH edildi + iPhone'da DOĞRULANDI (çalışıyor) + ML Kit iOS açık kaldı
+
+**Devraldım:** Üstteki 2026-06-18 entry'si — NLLB lowMemory fix "kodlandı" deniyordu ama açık iş = Codemagic build + iPhone testi. Mehmet oturuma "NLLB çevir hâlâ çöküyor" diye girdi.
+
+**Yaptıklarım:**
+- **Kök sorun bulundu:** Önceki oturumun fix'i **commit/push EDİLMEMİŞTİ** — `nllb_onnx_translator.dart` (+112) ve `nllb_translation_engine.dart` (+4) çalışma ağacında duruyordu, `origin/ios-build...HEAD = 0 0`. Mehmet'in test ettiği Codemagic build'i eski `b4987fa`'dan derlenmiş = fix YOK → NLLB çeviri hâlâ çöküyordu (beklenen).
+- **Push edildi:** `flutter analyze` temiz → fix (4 dosya: 2 kod + roadmap + punch_board) commit **`eaeff15`** → `origin/ios-build`'e push (`b4987fa..eaeff15`). Mehmet'e takip için hash verildi.
+- **Mehmet yeni build alıp iPhone'da test etti → NLLB ÇEVİRİ ÇALIŞIYOR, çökme yok.** ✅ (jetsam/bellek-limiti hipotezi DOĞRULANDI.)
+- **Davranış sorusu yanıtlandı (kodla):** iOS'te app açılışında (splash `preloadShared`) lowMemory yüzünden yalnız **tokenizer** yüklenir, 3 ağır ONNX session DEĞİL → ağır yük **"Çevir"e basınca**; her çeviride 3 session diskten yeniden açılır.
+
+**Bıraktıklarım:** **NLLB iOS = ÇÖZÜLDÜ + DOĞRULANDI.** Açık iş: **(1) ML Kit iOS hâlâ çalışmıyor** — Mehmet'e soruldu: hangi feature (Hızlı çeviri tier=`google_mlkit_translation` mı, Görsel Çeviri/OCR=`google_mlkit_text_recognition` mi) + tam hata mesajı? Güçlü şüphe: `use_frameworks! :linkage => :static` (gemma/TFLite zorluyor) ML Kit resource `.bundle`'ını kırıyor → Error 13 / OCR boş. NLLB tam offline olduğundan ürün kararı: ML Kit iOS'te düzelt mi yoksa gizle mi? **(2) NLLB iOS hız** — çeviri başına 3 session reload yavaş olabilir; istenirse `decoder_with_past` resident tutulup peak dengelenir. Mehmet 1-2 saat AFK, dönünce devam.
+
+**Sıradaki modele not:** ⚠️ Mehmet dönene kadar ML Kit'e kod dokunma — hangi feature/hata netleşmeden değişiklik = boşa Codemagic build + sideload turu (pahalı). ⚠️ Mac yok → her iOS değişikliği Codemagic rebuild + Sideloadly ister. ⚠️ Bu oturumun dersi: "kod tamam" demek "push edildi" demek DEĞİL — iOS işinde fix'i her zaman commit+push, yoksa Mehmet düzeltmesiz build test eder. Mehmet kısa/net.
+
+---
+
 ## 2026-06-18 — Claude Opus 4.8 — NLLB iOS crash kök nedeni bulundu + sıralı-session fix kodlandı
 
 **Devraldım:** iOS feedback 2 entry'si. Açık iş = NLLB iOS crash kök nedeni ("preload kapatmak çözüm değil, nedeni bul"). Roadmap'in en güçlü şüphelisi = SentencePieceTokenizer'ın iOS binary'si yok diye native çökmesi.
