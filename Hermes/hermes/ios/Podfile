@@ -43,6 +43,33 @@ target 'Runner' do
   end
 end
 
+# ML Kit pod'ları (çeviri + OCR + dil tespiti) DİNAMİK framework + resource
+# `.bundle` (model/sözlük dosyaları) ister; `use_frameworks! :linkage => :static`
+# altında bu bundle'lar app'e kopyalanmıyor/çözülemiyor → iOS'te
+# `translateText` Error 13 "model file not found" / OCR boş döner (hem
+# google_mlkit_translation hem _text_recognition hem _language_id). Çözüm:
+# yalnız ML Kit ailesi pod'larını dinamik framework'e zorla; flutter_gemma
+# (MediaPipeTasksGenAI) ve whisper (TensorFlowLiteC) statik kalmaya devam eder
+# (onlar statik xcframework şart). pre_install, pod entegrasyonundan ÖNCE her
+# pod'un `build_type`'ını override eder.
+pre_install do |installer|
+  installer.pod_targets.each do |pod|
+    if pod.name.start_with?('GoogleMLKit') ||
+        pod.name.start_with?('MLKit') ||
+        pod.name.start_with?('MLImage') ||
+        pod.name == 'GoogleToolboxForMac' ||
+        pod.name == 'GoogleUtilities' ||
+        pod.name == 'GoogleUtilitiesComponents' ||
+        pod.name == 'GTMSessionFetcher' ||
+        pod.name == 'PromisesObjC' ||
+        pod.name == 'Protobuf'
+      def pod.build_type
+        Pod::BuildType.dynamic_framework
+      end
+    end
+  end
+end
+
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)

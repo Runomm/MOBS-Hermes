@@ -88,11 +88,22 @@ class NllbOnnxTranslator {
   OrtSession? _decoderPast; // decoder_with_past, step1+
   final OnnxRuntime _ort = OnnxRuntime();
 
+  /// **Resident pin (2026-06-19, iOS hız).** iOS [lowMemory] varsayılanı her
+  /// `translate`'te 3 session'ı diskten yeniden açar (int8 prepack) → OCR çok-blok
+  /// + ardışık çeviride gecikme birikir. [pinResident] sonrası translate resident
+  /// yola girer (session'lar [load]'da yaratılıp açık tutulur, reload yok, detach
+  /// gerekmez); [unpinResident] kapatıp RAM'i geri verir. Android'de zaten resident.
+  bool _resident = false;
+
+  /// Etkin düşük-bellek davranışı: lowMemory cihazda AMA pin DEĞİLSE sıralı
+  /// yükle/boşalt; pinlenmişse (veya Android'de) resident.
+  bool get _lowMem => lowMemory && !_resident;
+
   bool get isLoaded =>
       _tok != null &&
-      // lowMemory'de session'lar geçici (her translate'te yaratılır) → tokenizer
-      // hazırsa "yüklü" say.
-      (lowMemory ||
+      // _lowMem'de session'lar geçici (her translate'te yaratılır) → tokenizer
+      // hazırsa "yüklü" say; resident yolda 3 session da hazır olmalı.
+      (_lowMem ||
           (_encoder != null && _decoder != null && _decoderPast != null));
 
   // Debug: gerçek tensor adları (varsayımlar yanlışsa ekranda görünür).
@@ -105,9 +116,10 @@ class NllbOnnxTranslator {
 
   Future<void> load() async {
     _tok ??= await SentencePieceTokenizer.fromModelFile(spModelPath);
-    // lowMemory'de session'lar burada DEĞİL, translate içinde sırayla yaratılır
-    // (peak RAM'i ~1.34GB→~600MB indirir, iOS jetsam'i aşmasın).
-    if (lowMemory) return;
+    // _lowMem'de session'lar burada DEĞİL, translate içinde sırayla yaratılır
+    // (peak RAM'i ~1.34GB→~600MB indirir, iOS jetsam'i aşmasın). Pinlenmişse
+    // (resident) 3 session burada yaratılıp açık tutulur.
+    if (_lowMem) return;
     _encoder ??= await _ort.createSession(encoderPath, options: _opts);
     _decoder ??= await _ort.createSession(decoderPath, options: _opts);
     _decoderPast ??= await _ort.createSession(decoderWithPastPath, options: _opts);
@@ -162,7 +174,7 @@ class NllbOnnxTranslator {
           await enc.run({'input_ids': encInputIds, 'attention_mask': encAttMask});
       await encInputIds.dispose();
       var hidden = encOut['last_hidden_state']!;
-      if (lowMemory) {
+      if (_lowMem) {
         // hidden, encoder'ın arena çıktısı → encoder'ı kapatmadan önce bağımsız
         // kopyaya al; sonra ~419MB'lik encoder'ı bırak.
         final detached = await _detach(hidden);
@@ -188,7 +200,7 @@ class NllbOnnxTranslator {
           await e.value.dispose();
         } else {
           final pastName = _toPastName(e.key); // present.* → past
-          if (lowMemory) {
+          if (_lowMem) {
             // decoder'ı kapatacağız → cache girişlerini bağımsız kopyaya al.
             // (encoder.* cross-attn cache loop boyunca taşınır, decoder.* ilk
             //  adımda decoder_with_past çıktısıyla değişecek.)
@@ -199,7 +211,7 @@ class NllbOnnxTranslator {
           }
         }
       }
-      if (lowMemory) {
+      if (_lowMem) {
         await dec.close(); // ~470MB bırak
         dec = null;
       }
@@ -245,8 +257,9 @@ class NllbOnnxTranslator {
         await v.dispose();
       }
       await encAttMask.dispose();
-      // Geçici session'ları kapat (hata yolunda da sızdırma).
-      if (lowMemory) {
+      // Geçici session'ları kapat (hata yolunda da sızdırma). Resident/pin
+      // yolda (_lowMem=false) session'lar açık tutulur → kapatma atlanır.
+      if (_lowMem) {
         await enc?.close();
         await dec?.close();
         await decPast?.close();
@@ -270,6 +283,26 @@ class NllbOnnxTranslator {
       }
     }
     return bestIdx;
+  }
+
+  /// Aktif bir oturum/burst boyunca session'ları resident tut (iOS hız). Sonraki
+  /// [translate]'in [load]'u 3 session'ı yaratıp saklar → her çeviride reload
+  /// kalkar. ⚠️ Peak ~1.34GB; bittiğinde [unpinResident] ile RAM'i geri ver.
+  /// Android'de (lowMemory=false) zaten resident → etkisiz.
+  void pinResident() => _resident = true;
+
+  /// Resident pin'i kaldır + (iOS'te) session'ları kapatıp RAM'i geri ver →
+  /// lowMemory davranışına dön. Android'de session'lar resident kalır.
+  Future<void> unpinResident() async {
+    _resident = false;
+    if (lowMemory) {
+      await _encoder?.close();
+      await _decoder?.close();
+      await _decoderPast?.close();
+      _encoder = null;
+      _decoder = null;
+      _decoderPast = null;
+    }
   }
 
   Future<void> dispose() async {

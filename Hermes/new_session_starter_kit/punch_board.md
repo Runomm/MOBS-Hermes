@@ -61,6 +61,23 @@ Yeni entry'i bu bölümün hemen altına (en üste) yapıştır.
 
 ---
 
+## 2026-06-19 — Claude Opus 4.8 — iOS 3'lü paket: ML Kit fix + NLLB resident hız + SmallTalk iOS'te açıldı (analyze temiz, 196/196, `ios-build` push)
+
+**Devraldım:** Üstteki 2026-06-18 entry'si — NLLB iOS ÇÖZÜLDÜ+doğrulandı; açık iş = (1) ML Kit iOS hiçbir yerde çalışmıyor, (2) NLLB iOS hızı. Mehmet'e önce NLLB yükleme açıklaması + hız sorusu gösterildi (memory'nin isteği).
+
+**Yaptıklarım:**
+- **Mehmet kararları (AskUserQuestion ×3):** NLLB hızı "hızlıydı ama SmallTalk için yetmeyebilir → optimize et"; ML Kit "düzeltmeyi araştır"; ayrıca "sherpa-onnx ekle" dedi → araştırınca **Türkçe streaming model YOK + çift-ORT çakışma riski** çıktı → Mehmet "sherpa'yı ertele, **Whisper ile iOS canlı modu aç**". 3 iş tek build'e.
+- **(1) ML Kit fix:** `ios/Podfile`'a `pre_install` — GoogleMLKit ailesi pod'larını `dynamic_framework`'e zorlar (kök neden `:linkage => :static` resource `.bundle`'ı kırıyordu); flutter_gemma/MediaPipe/TFLite statik kalır.
+- **(2) NLLB resident hız:** `nllb_onnx_translator` `_resident`/`_lowMem` + `pinResident`/`unpinResident`; `nllb_translation_engine` `pinShared`/`unpinShared`(+`_pinPending`); OCR + Manuel ekranları NLLB tier'ında pinliyor → tur-başı 3-session reload kalkar.
+- **(3) SmallTalk iOS'te açıldı:** `home_screen` SmallTalk `_push` ile açılıyor (Konferans "yakında" kalıyor — Vosk-streaming-only); `smalltalk_setup_screen` hands-free "Hızlı"(Vosk) tier'ı iOS'te gizli + `_next` guard.
+- analyze temiz, **196/196 test**, `ios-build`'e push edildi.
+
+**Bıraktıklarım:** **KOD TAMAM + PUSH. CODEMAGIC BUILD + iPHONE TEST BEKLİYOR (Mehmet).** Test: (a) ML Kit — OCR metin tanıyor + Manuel Hızlı tier Error 13 yok; (b) NLLB — OCR çok-blok 2.+ blok belirgin hızlı + **çökme yok** (1.34GB foreground tutuyor mu — kritik deney); (c) SmallTalk — açılıyor, Hızlı tier gizli, Tam ile hands-free Whisper konuşma + Bas-konuş çalışıyor; Konferans hâlâ "yakında".
+
+**Sıradaki modele not:** ⚠️ NLLB resident ~1.34GB foreground'da çökerse → fallback yalnız `decoder_with_past` resident (~445MB) ya da o ekranda lowMemory'ye dön. ⚠️ ML Kit Podfile fix ilk build'de çözmezse → log'daki gerçek pod adlarına göre `pre_install` listesini ayarla; fallback `cocoapods-user-defined-build-types` plugin. ⚠️ Konferans iOS = Vosk-streaming-only, açmak için chunked-Whisper Konferans yolu gerekir (ayrı iş). ⚠️ sherpa-onnx = Türkçe streaming model + çift-ORT çözülünce ayrı izole spike. ⚠️ Mac yok → her iOS değişikliği Codemagic + Sideloadly. Mehmet kısa/net.
+
+---
+
 ## 2026-06-18 (akşam) — Claude Opus 4.8 — NLLB iOS fix PUSH edildi + iPhone'da DOĞRULANDI (çalışıyor) + ML Kit iOS açık kaldı
 
 **Devraldım:** Üstteki 2026-06-18 entry'si — NLLB lowMemory fix "kodlandı" deniyordu ama açık iş = Codemagic build + iPhone testi. Mehmet oturuma "NLLB çevir hâlâ çöküyor" diye girdi.

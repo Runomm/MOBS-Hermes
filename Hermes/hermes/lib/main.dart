@@ -11,6 +11,7 @@ import 'package:record/record.dart';
 import 'core/engines/stt/stt_engine.dart';
 import 'core/engines/stt/whisper_cpp_engine.dart';
 import 'core/engines/translation/google_mlkit_engine.dart';
+import 'core/engines/translation/nllb_translation_engine.dart';
 import 'core/engines/translation/translation_engine.dart';
 import 'core/engines/translation/translation_tier.dart';
 import 'core/engines/tts/native_tts_engine.dart';
@@ -292,6 +293,7 @@ class _TranslationTestScreenState extends State<TranslationTestScreen> {
 
   @override
   void dispose() {
+    unawaited(NllbTranslationEngine.unpinShared());
     _inputController.dispose();
     unawaited(_translationEngine.dispose());
     unawaited(_sttEngine.dispose());
@@ -352,6 +354,13 @@ class _TranslationTestScreenState extends State<TranslationTestScreen> {
       _translationEngine = createTranslationEngine(tier, hfToken: token);
     });
     unawaited(old.dispose());
+    // iOS hız: NLLB tier'ında session'ları resident tut (ardışık çeviride
+    // reload kalkar), aksi halde RAM'i geri ver. (Android'de no-op.)
+    if (tier == TranslationTier.nllb) {
+      NllbTranslationEngine.pinShared();
+    } else {
+      unawaited(NllbTranslationEngine.unpinShared());
+    }
     unawaited(_refreshLanguageStates());
   }
 

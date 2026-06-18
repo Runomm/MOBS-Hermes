@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 
 import '../../core/engines/translation/translation_tier.dart';
@@ -93,6 +95,11 @@ class _SmallTalkSetupScreenState extends State<SmallTalkSetupScreen> {
       return;
     }
     if (_master == _local) return; // savunma; UI zaten engeller
+    // iOS savunma: "Hızlı" (Vosk×2) tier'ı iOS'te kurulumda gizli — yine de
+    // seçili kalmışsa (örn. eski state) Tam'a düşür ki Vosk başlatılmasın.
+    if (Platform.isIOS && _hfQuality == SessionQuality.fast) {
+      _hfQuality = SessionQuality.full;
+    }
     // F1 — ağır katman (NLLB) düşük-RAM cihazda OOM uyarısı.
     if (_heavySelected) {
       final proceed = await confirmHeavyTierOnLowRam(context);
@@ -489,14 +496,19 @@ class _SmallTalkSetupScreenState extends State<SmallTalkSetupScreen> {
             ),
           ),
           if (handsfree) ...[
-            HgQualityCard(
-              icon: HgIcons.bolt,
-              title: 'Hızlı',
-              meta: 'Vosk + ML Kit · en düşük gecikme',
-              selected: _hfQuality == SessionQuality.fast,
-              onTap: () => setState(() => _hfQuality = SessionQuality.fast),
-            ),
-            const SizedBox(height: 11),
+            // "Hızlı" hands-free tier'ı Vosk×2'ye dayanır; `vosk_flutter_2`'nin
+            // iOS implementasyonu yok → iOS'te gizle (yalnız Whisper tabanlı
+            // Tam/Tam+ kalır; varsayılan zaten `full`).
+            if (!Platform.isIOS) ...[
+              HgQualityCard(
+                icon: HgIcons.bolt,
+                title: 'Hızlı',
+                meta: 'Vosk + ML Kit · en düşük gecikme',
+                selected: _hfQuality == SessionQuality.fast,
+                onTap: () => setState(() => _hfQuality = SessionQuality.fast),
+              ),
+              const SizedBox(height: 11),
+            ],
             HgQualityCard(
               icon: HgIcons.target,
               title: 'Tam',
@@ -512,6 +524,15 @@ class _SmallTalkSetupScreenState extends State<SmallTalkSetupScreen> {
               selected: _hfQuality == SessionQuality.fullPlus,
               onTap: () => setState(() => _hfQuality = SessionQuality.fullPlus),
             ),
+            if (Platform.isIOS)
+              Padding(
+                padding: const EdgeInsets.only(top: 11),
+                child: Text(
+                  'Hızlı mod iOS\'te yakında — canlı çevrimdışı motor '
+                  'entegrasyonu sürüyor.',
+                  style: HgType.sans(12, color: p.faint, height: 1.4),
+                ),
+              ),
           ] else ...[
             HgQualityCard(
               icon: HgIcons.bolt,

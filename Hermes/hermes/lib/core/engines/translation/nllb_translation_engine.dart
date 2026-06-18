@@ -57,6 +57,22 @@ class NllbTranslationEngine implements TranslationEngine {
     _shared = null;
   }
 
+  /// iOS hız: aktif bir ekran/oturum boyunca NLLB session'larını resident tut
+  /// (her çeviride 3 ONNX session'ı yeniden açma maliyetini kaldırır). OCR
+  /// çok-blok + ardışık Manuel çeviride faydalı. `_shared` henüz yoksa ilk
+  /// çeviride yaratılınca pin etkili olur; o yüzden pin bayrağını da koru.
+  static bool _pinPending = false;
+  static void pinShared() {
+    _pinPending = true;
+    _shared?.pinResident();
+  }
+
+  /// Resident pin'i kaldır + (iOS'te) session'ları kapatıp RAM'i geri ver.
+  static Future<void> unpinShared() async {
+    _pinPending = false;
+    await _shared?.unpinResident();
+  }
+
   @override
   String get engineName => 'NLLB-600M';
 
@@ -80,6 +96,9 @@ class NllbTranslationEngine implements TranslationEngine {
       // iOS: 3 session'ı aynı anda tutma → jetsam çöküşü; sıralı yükle/boşalt.
       lowMemory: Platform.isIOS,
     );
+    // Pin bayrağı session yaratımından önce konmuşsa (ekran açıkken _shared null
+    // idiyse) yeni instance'a uygula → load() resident yaratır.
+    if (_pinPending) _shared!.pinResident();
     await _shared!.load();
   }
 

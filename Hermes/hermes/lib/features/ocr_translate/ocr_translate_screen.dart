@@ -10,6 +10,7 @@ import '../../core/engines/language_id/language_detector.dart';
 import '../../core/engines/language_id/ml_kit_language_detector.dart';
 import '../../core/engines/ocr/mlkit_text_recognizer.dart';
 import '../../core/engines/ocr/text_recognizer_engine.dart';
+import '../../core/engines/translation/nllb_translation_engine.dart';
 import '../../core/engines/translation/translation_engine.dart';
 import '../../core/engines/translation/translation_tier.dart';
 import '../../core/theme/hg_glass.dart';
@@ -126,8 +127,20 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
     return _uprightPath(file.path);
   }
 
+  /// iOS hız: NLLB tier seçiliyken session'ları resident tut → her bloğa
+  /// dokunuşta 3 ONNX session'ı diskten yeniden açma maliyeti kalkar. Diğer
+  /// tier'larda RAM'i geri ver. (Android'de no-op.)
+  void _syncNllbPin() {
+    if (_tier == TranslationTier.nllb) {
+      NllbTranslationEngine.pinShared();
+    } else {
+      unawaited(NllbTranslationEngine.unpinShared());
+    }
+  }
+
   @override
   void dispose() {
+    unawaited(NllbTranslationEngine.unpinShared());
     _recognizer.dispose();
     _detector.dispose();
     super.dispose();
@@ -514,6 +527,7 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
           _tier = tier;
           _hfToken = token;
           _modelReady = ready;
+          _syncNllbPin();
         }),
       );
 

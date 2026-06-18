@@ -48,10 +48,12 @@ class HomeScreen extends StatelessWidget {
     Navigator.of(context).push(MaterialPageRoute(builder: builder));
   }
 
-  /// Canlı transkript modları (Konferans/SmallTalk) şu an **Vosk** motoruna
-  /// dayanıyor; `vosk_flutter_2`'nin iOS implementasyonu YOK → iOS'te açılınca
-  /// "platform ios is not supported" hatası veriyordu. iOS'te çirkin hata yerine
-  /// nazik "yakında" mesajı göster (sherpa-onnx entegrasyonu beklemede, 2026-06-14).
+  /// **Konferans** modu canlı transkripti **Vosk native streaming**'e dayanıyor
+  /// (`conference_streaming_session`); `vosk_flutter_2`'nin iOS implementasyonu
+  /// YOK → iOS'te "platform ios is not supported". Whisper yolu olmadığından
+  /// Konferans iOS'te şimdilik kapalı; çirkin hata yerine nazik "yakında" göster.
+  /// (SmallTalk artık iOS'te AÇIK — Whisper tabanlı Tam/Tam+ tier'larıyla; yalnız
+  /// Vosk'a bağlı "Hızlı" hands-free tier'ı kurulumda iOS'te gizleniyor, 2026-06-19.)
   void _openLiveMode(BuildContext context, WidgetBuilder builder) {
     if (Platform.isIOS) {
       _showIosSoon(context);
@@ -109,8 +111,9 @@ class HomeScreen extends StatelessWidget {
         accent: p.smalltalk,
         title: 'SmallTalk',
         desc: 'Karşılıklı çeviri — bas konuş ya da hands-free',
-        onTap: () =>
-            _openLiveMode(context, (_) => const SmallTalkSetupScreen()),
+        // SmallTalk iOS'te AÇIK (Whisper tabanlı tier'lar); Vosk'a bağlı "Hızlı"
+        // tier'ı kurulum sihirbazında iOS'te gizleniyor → _push doğrudan açar.
+        onTap: () => _push(context, (_) => const SmallTalkSetupScreen()),
         onArchive: () => _push(context, (_) => const SmallTalkArchiveScreen()),
         archiveTooltip: 'SmallTalk\'larım',
       ),
