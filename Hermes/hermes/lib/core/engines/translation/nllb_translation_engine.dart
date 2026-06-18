@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import '../../models/nllb_model_manager.dart';
 import 'nllb_onnx_translator.dart';
 import 'translation_engine.dart';
@@ -75,6 +77,8 @@ class NllbTranslationEngine implements TranslationEngine {
       decoderWithPastPath:
           await _mgr.pathFor(NllbModelManager.fileById('decoder_past')),
       spModelPath: await _mgr.pathFor(NllbModelManager.fileById('tokenizer')),
+      // iOS: 3 session'ı aynı anda tutma → jetsam çöküşü; sıralı yükle/boşalt.
+      lowMemory: Platform.isIOS,
     );
     await _shared!.load();
   }

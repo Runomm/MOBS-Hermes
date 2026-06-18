@@ -61,6 +61,21 @@ Yeni entry'i bu bölümün hemen altına (en üste) yapıştır.
 
 ---
 
+## 2026-06-18 — Claude Opus 4.8 — NLLB iOS crash kök nedeni bulundu + sıralı-session fix kodlandı
+
+**Devraldım:** iOS feedback 2 entry'si. Açık iş = NLLB iOS crash kök nedeni ("preload kapatmak çözüm değil, nedeni bul"). Roadmap'in en güçlü şüphelisi = SentencePieceTokenizer'ın iOS binary'si yok diye native çökmesi.
+
+**Yaptıklarım:**
+- **Şüpheli elendi:** pub cache'te `dart_sentencepiece_tokenizer-1.3.2` = **saf Dart, FFI yok** → native çökemez. Inference-spike de elendi: crash `preloadNllb()`'de (yalnız `load()`, hiç `translate()` yok) → **session yaratımında, inference'tan ÖNCE**.
+- **Kök neden = iOS jetsam (per-app bellek limiti):** `load()` 3 ONNX session'ı ~1.34GB aynı anda RAM'e alıyor; `increased-memory-limit` entitlement yok (dosya yok + codemagic siliyor + ücretsiz Apple ID veremez) → native SIGKILL.
+- **Fix kodlandı (analyze temiz, 196/196 test):** `NllbOnnxTranslator.lowMemory` (`Platform.isIOS`) → session'lar `load()`'da değil, `translate()` içinde sırayla yaratılıp kullanım biter bitmez kapatılıyor (peak ~1.34GB→~600MB). iOS plugin `useArena`'yı yok saydığı için (arena açık) session sınırını geçen hidden+KV cache `_detach` ile bağımsız OrtValue'ya kopyalanıyor (küçük). Android resident yolu aynen korundu.
+
+**Bıraktıklarım:** **KOD TAMAM, analyze temiz, 196/196 test. Codemagic build + iPhone testi BEKLİYOR** (Mac yok, ben başlatamam). Test: NLLB indir → çeviri → (a) çökmüyor mu, (b) çeviri doğru mu (detach tensörleri bozmadı mı), (c) hız kabul mü.
+
+**Sıradaki modele not:** ⚠️ Hız riski: iOS'te her çeviride 3 session yeniden yükleniyor (int8 prepack) → yavaş olabilir; çalışırsa decoder_with_past'ı resident tutup peak'i dengele. ⚠️ Çökme devam ederse hipotez (jetsam) yanlış olabilir → Mehmet'ten gerçek crash log iste; ya da NLLB iOS'te elenip sherpa-onnx/online yola geç. ⚠️ ML Kit iOS'te ayrı problem (model yüklenmiyor) — bu fix yalnız NLLB içindir.
+
+---
+
 ## 2026-06-14 — Claude Opus 4.8 — iOS BUILD HAZIRLIĞI (Mac'siz, Codemagic + Sideloadly) — `ios-build` dalı push edildi
 
 **Devraldım:** #4 entry — kod tamam, analyze temiz, 196 test, açılış siyah-ekran açık. Mehmet bu turda YÖN DEĞİŞTİRDİ: **iPhone 17 Pro Max'te iOS testi** (Faz 1 boyunca iOS test edilmiyordu, artık ediliyor). "Son kontroller + animasyon/pixel doğru mu + adım adım iOS build."

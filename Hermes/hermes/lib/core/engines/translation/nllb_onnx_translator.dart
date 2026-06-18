@@ -36,12 +36,33 @@ class NllbOnnxTranslator {
     required this.decoderPath,
     required this.decoderWithPastPath,
     required this.spModelPath,
+    this.lowMemory = false,
   });
 
   final String encoderPath;
   final String decoderPath;
   final String decoderWithPastPath;
   final String spModelPath;
+
+  /// **iOS bellek modu (2026-06-18).** iOS, `increased-memory-limit` entitlement'ı
+  /// olmadan (ücretsiz Apple ID + Sideloadly yolunda yok) uygulama başına bellek
+  /// tavanı uygular; 3 ONNX session'ı (~1.34GB) aynı anda yüklemek jetsam SIGKILL
+  /// = yakalanamayan native çöküş üretiyordu (preload'da, inference'tan ÖNCE →
+  /// kök neden = session yaratımı, int8 inference spike'i değil).
+  ///
+  /// `lowMemory=true` → session'lar [load]'da değil, her [translate] içinde
+  /// **sırayla** yaratılır ve kullanım biter bitmez kapatılır
+  /// (encoder→kapat→decoder→kapat→decoder_with_past→kapat). Peak ~1.34GB → ~600MB.
+  /// Bir session'ın çıktısı (hidden / KV cache) o session kapatılınca CPU mem
+  /// arena ile serbest kaldığından (iOS plugin `useArena`'yı yok sayıyor →
+  /// arena daima açık), session sınırını geçen her tensör [_detach] ile bağımsız
+  /// kopyaya alınır (hidden ~80KB, cache ~birkaç MB — ucuz).
+  ///
+  /// **Hız bedeli:** her çeviride 3 session yeniden yüklenir (int8 prepack) →
+  /// iOS'te çeviri başına birkaç sn yavaşlama olabilir; önce "çöküyor mu" sorusu,
+  /// hız sonra optimize edilir. Android'de `false` → session'lar resident (hızlı,
+  /// cihazda kanıtlandı; parite korunur).
+  final bool lowMemory;
 
   static const int maxNewTokens = 96;
 
@@ -69,9 +90,10 @@ class NllbOnnxTranslator {
 
   bool get isLoaded =>
       _tok != null &&
-      _encoder != null &&
-      _decoder != null &&
-      _decoderPast != null;
+      // lowMemory'de session'lar geçici (her translate'te yaratılır) → tokenizer
+      // hazırsa "yüklü" say.
+      (lowMemory ||
+          (_encoder != null && _decoder != null && _decoderPast != null));
 
   // Debug: gerçek tensor adları (varsayımlar yanlışsa ekranda görünür).
   List<String> get encoderInputNames => _encoder?.inputNames ?? const [];
@@ -79,12 +101,24 @@ class NllbOnnxTranslator {
   List<String> get decoderInputNames => _decoder?.inputNames ?? const [];
   List<String> get decoderOutputNames => _decoder?.outputNames ?? const [];
 
+  OrtSessionOptions get _opts => OrtSessionOptions(intraOpNumThreads: 4);
+
   Future<void> load() async {
     _tok ??= await SentencePieceTokenizer.fromModelFile(spModelPath);
-    final opts = OrtSessionOptions(intraOpNumThreads: 4);
-    _encoder ??= await _ort.createSession(encoderPath, options: opts);
-    _decoder ??= await _ort.createSession(decoderPath, options: opts);
-    _decoderPast ??= await _ort.createSession(decoderWithPastPath, options: opts);
+    // lowMemory'de session'lar burada DEĞİL, translate içinde sırayla yaratılır
+    // (peak RAM'i ~1.34GB→~600MB indirir, iOS jetsam'i aşmasın).
+    if (lowMemory) return;
+    _encoder ??= await _ort.createSession(encoderPath, options: _opts);
+    _decoder ??= await _ort.createSession(decoderPath, options: _opts);
+    _decoderPast ??= await _ort.createSession(decoderWithPastPath, options: _opts);
+  }
+
+  /// Bir float32 tensörü (hidden / KV cache) üreten session'dan **bağımsız**
+  /// kopyaya alır — `lowMemory`'de session kapatılınca arena ile dangling olmasın.
+  /// NLLB'nin hidden state ve KV cache tensörleri float32'dir.
+  Future<OrtValue> _detach(OrtValue v) async {
+    final flat = (await v.asFlattenedList()).map((e) => (e as num).toDouble());
+    return OrtValue.fromList(Float32List.fromList(flat.toList()), v.shape);
   }
 
   /// `present.X` çıktı adını `past_key_values.X` giriş adına çevirir.
@@ -108,42 +142,73 @@ class NllbOnnxTranslator {
     final inputIds = <int>[srcLangId, ...subwords, eosId];
     final srcLen = inputIds.length;
 
-    final encInputIds =
-        await OrtValue.fromList(Int64List.fromList(inputIds), [1, srcLen]);
     final encAttMask = await OrtValue.fromList(
         Int64List.fromList(List<int>.filled(srcLen, 1)), [1, srcLen]);
-
-    // --- Encoder (1 kez) ---
-    final encOut = await _encoder!
-        .run({'input_ids': encInputIds, 'attention_mask': encAttMask});
-    final hidden = encOut['last_hidden_state']!;
-    await encInputIds.dispose();
 
     // --- KV cache: past_key_values.* → OrtValue ---
     final cache = <String, OrtValue>{};
     final generated = <int>[];
 
+    // Session'lar: resident (Android) veya geçici (iOS lowMemory). Geçici
+    // olanlar kullanımı bitince kapatılır → peak RAM ~1.34GB→~600MB.
+    OrtSession? enc, dec, decPast;
+
     try {
+      // --- Encoder (1 kez) ---
+      enc = _encoder ?? await _ort.createSession(encoderPath, options: _opts);
+      final encInputIds =
+          await OrtValue.fromList(Int64List.fromList(inputIds), [1, srcLen]);
+      final encOut =
+          await enc.run({'input_ids': encInputIds, 'attention_mask': encAttMask});
+      await encInputIds.dispose();
+      var hidden = encOut['last_hidden_state']!;
+      if (lowMemory) {
+        // hidden, encoder'ın arena çıktısı → encoder'ı kapatmadan önce bağımsız
+        // kopyaya al; sonra ~419MB'lik encoder'ı bırak.
+        final detached = await _detach(hidden);
+        await hidden.dispose();
+        hidden = detached;
+        await enc.close();
+        enc = null;
+      }
+
       // step0: decoder_model (past'sız) → cache'i seed et, forced tgt_lang.
-      var step0In = await OrtValue.fromList(Int64List.fromList([eosId]), [1, 1]);
-      final dec0 = await _decoder!.run({
+      dec = _decoder ?? await _ort.createSession(decoderPath, options: _opts);
+      final step0In =
+          await OrtValue.fromList(Int64List.fromList([eosId]), [1, 1]);
+      final dec0 = await dec.run({
         'input_ids': step0In,
         'encoder_attention_mask': encAttMask,
         'encoder_hidden_states': hidden,
       });
       await step0In.dispose();
+      await hidden.dispose(); // encoder_hidden_states artık gerekmiyor
       for (final e in dec0.entries) {
         if (e.key == 'logits') {
           await e.value.dispose();
         } else {
-          cache[_toPastName(e.key)] = e.value; // present.* → past
+          final pastName = _toPastName(e.key); // present.* → past
+          if (lowMemory) {
+            // decoder'ı kapatacağız → cache girişlerini bağımsız kopyaya al.
+            // (encoder.* cross-attn cache loop boyunca taşınır, decoder.* ilk
+            //  adımda decoder_with_past çıktısıyla değişecek.)
+            cache[pastName] = await _detach(e.value);
+            await e.value.dispose();
+          } else {
+            cache[pastName] = e.value;
+          }
         }
       }
-      await hidden.dispose(); // encoder_hidden_states artık gerekmiyor
+      if (lowMemory) {
+        await dec.close(); // ~470MB bırak
+        dec = null;
+      }
 
       var lastToken = tgtLangId; // forced_bos (pos1)
 
       // step1+: decoder_with_past, her adım tek token.
+      decPast = _decoderPast ??
+          await _ort.createSession(decoderWithPastPath, options: _opts);
       for (var step = 0; step < maxNewTokens; step++) {
         final stepIn =
             await OrtValue.fromList(Int64List.fromList([lastToken]), [1, 1]);
@@ -152,7 +217,7 @@ class NllbOnnxTranslator {
           'encoder_attention_mask': encAttMask,
           ...cache,
         };
-        final out = await _decoderPast!.run(inputs);
+        final out = await decPast.run(inputs);
         await stepIn.dispose();
 
         // logits [1,1,vocab] → argmax.
@@ -163,6 +228,7 @@ class NllbOnnxTranslator {
 
         // Cache güncelle: yalnız çıktıda gelen present.* (decoder.*) yenilenir;
         // encoder.* gelmez → eski değer korunur (sabit cross-attn KV).
+        // decPast loop boyunca açık → çıktıları detach gerektirmez.
         for (final e in out.entries) {
           if (e.key == 'logits') continue;
           final pastName = _toPastName(e.key);
@@ -179,6 +245,12 @@ class NllbOnnxTranslator {
         await v.dispose();
       }
       await encAttMask.dispose();
+      // Geçici session'ları kapat (hata yolunda da sızdırma).
+      if (lowMemory) {
+        await enc?.close();
+        await dec?.close();
+        await decPast?.close();
+      }
     }
 
     // Üretilen HF id'leri → SP id (-1) → detokenize.
