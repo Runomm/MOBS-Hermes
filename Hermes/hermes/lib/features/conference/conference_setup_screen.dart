@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../core/engines/translation/translation_tier.dart';
@@ -36,7 +38,9 @@ class _ConferenceSetupScreenState extends State<ConferenceSetupScreen> {
   String _source = 'en';
   String _target = 'tr';
   bool _ttsEnabled = false;
-  TranslationTier _tier = TranslationTier.mlkit;
+  // iOS'te ML Kit çevirisi bozuk → varsayılan NLLB ("Hızlı"/ML Kit kartı gizli).
+  TranslationTier _tier =
+      Platform.isIOS ? TranslationTier.nllb : TranslationTier.mlkit;
   double _swapTurns = 0;
 
   void _cycle(bool source) {
@@ -405,14 +409,17 @@ class _ConferenceSetupScreenState extends State<ConferenceSetupScreen> {
               style: HgType.sans(13.5, color: p.sub, height: 1.4),
             ),
           ),
-          HgQualityCard(
-            icon: HgIcons.bolt,
-            title: 'Hızlı',
-            meta: 'ML Kit · anında, hafif — düşük gecikme',
-            selected: _tier == TranslationTier.mlkit,
-            onTap: () => setState(() => _tier = TranslationTier.mlkit),
-          ),
-          const SizedBox(height: 11),
+          // ML Kit ("Hızlı") iOS'te bozuk → kartı gizle (yalnız NLLB).
+          if (!Platform.isIOS) ...[
+            HgQualityCard(
+              icon: HgIcons.bolt,
+              title: 'Hızlı',
+              meta: 'ML Kit · anında, hafif — düşük gecikme',
+              selected: _tier == TranslationTier.mlkit,
+              onTap: () => setState(() => _tier = TranslationTier.mlkit),
+            ),
+            const SizedBox(height: 11),
+          ],
           HgQualityCard(
             icon: HgIcons.layers,
             title: 'Akıllı',

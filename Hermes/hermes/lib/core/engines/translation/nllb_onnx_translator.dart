@@ -285,11 +285,20 @@ class NllbOnnxTranslator {
     return bestIdx;
   }
 
-  /// Aktif bir oturum/burst boyunca session'ları resident tut (iOS hız). Sonraki
+  /// Aktif bir oturum/burst boyunca session'ları resident tut (hız). Sonraki
   /// [translate]'in [load]'u 3 session'ı yaratıp saklar → her çeviride reload
-  /// kalkar. ⚠️ Peak ~1.34GB; bittiğinde [unpinResident] ile RAM'i geri ver.
-  /// Android'de (lowMemory=false) zaten resident → etkisiz.
-  void pinResident() => _resident = true;
+  /// kalkar.
+  ///
+  /// ⚠️ **iOS'te ([lowMemory]) NO-OP** (2026-06-19 kurtarma): resident 3 session
+  /// ~1.34GB → iOS jetsam (per-app bellek limiti) SIGKILL ile app'i öldürüyordu
+  /// (961116b regresyonu; eaeff15'in stabil sıralı davranışını kırmıştı). iOS hep
+  /// sıralı yükle/boşalt kalır → çökme yok (hız bedeli kabul; gerekirse ileride
+  /// yalnız decoder_with_past resident). Android'de (lowMemory=false) zaten
+  /// resident → bu çağrı etkisiz.
+  void pinResident() {
+    if (lowMemory) return; // iOS: resident peak jetsam'i aşar → sıralı kal
+    _resident = true;
+  }
 
   /// Resident pin'i kaldır + (iOS'te) session'ları kapatıp RAM'i geri ver →
   /// lowMemory davranışına dön. Android'de session'lar resident kalır.

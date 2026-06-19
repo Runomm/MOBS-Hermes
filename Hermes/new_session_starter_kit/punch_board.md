@@ -61,6 +61,23 @@ Yeni entry'i bu bölümün hemen altına (en üste) yapıştır.
 
 ---
 
+## 2026-06-19 (akşam) — Claude Opus 4.8 — iOS KURTARMA: 5 mod birden iOS'te çalışır hâle getirildi (analyze temiz, 208/208; PUSH BEKLİYOR)
+
+**Devraldım:** Üstteki 2026-06-19 entry'si (961116b, 3'lü paket cihaz testi bekliyordu). Mehmet test etti → **her şey patladı**, "acilen her şeyin çalışan bir sürümü" istedi (Konferans dahil). Kök nedenler izlendi, 5 fix tek build'e toplandı.
+
+**Yaptıklarım (5 fix, analyze temiz, 208/208 test, +12 yeni):**
+- **Fix 1 (NLLB çökme):** `nllb_onnx_translator.pinResident()` → `if (lowMemory) return;`. 961116b'nin resident pin'i iOS'te ~1.34GB tutup jetsam SIGKILL ediyordu → iOS hep sıralı/stabil (eaeff15 davranışı).
+- **Fix 2 (ML Kit çeviri bozuk → NLLB):** `model_tier_selector` iOS'te mlkit tier'ını gizler; `createTranslationEngine` choke-point'i iOS'te `mlkit→nllb` yönlendirir (hiçbir yol ML Kit çalıştırmaz); conference_setup mlkit kartı iOS'te gizli + varsayılan NLLB. OCR metin-tanıma çalışıyor (doğrulandı), yalnız çeviri NLLB'ye geçti.
+- **Fix 3 (Bas Konuş "platform ios is not supported"):** `vosk_stt_engine` `VoskFlutterPlugin.instance()` artık **lazy** (field init değil) + `canHandle` iOS'te erken `false` → `HybridSttEngine` kuruluşta patlamaz, Whisper'a düşer.
+- **Fix 4 (SmallTalk hands-free transkript düşüyor):** ML Kit langid iOS'te bozuk → yeni saf-Dart `heuristic_language_detector.dart` (2-aday: tr/en/es/de/fr/it karakter+kelime imleri); `whisper_langid_transcriber` iOS'te bunu kullanır. whisper_ggml yanıtı dil döndürmüyor (teyit) → kendi langid'i kullanılamadı. +12 unit test.
+- **Fix 5 (Konferans iOS açıldı):** yeni `whisper_streaming_transcriber.dart` (`StreamingTranscriber`, tek-dilli, mic finals→Whisper→düz final); `conference_screen` iOS'te bunu, `conference_streaming_session.isModelReady` iOS'te Whisper-small kontrolü; `home_screen` "iOS'te yakında" gate'i + `_showIosSoon` SİLİNDİ.
+
+**Bıraktıklarım:** **KOD TAMAM, analyze temiz, 208/208. COMMIT+PUSH + Codemagic build + iPhone testi BEKLİYOR.** Test (5 alan): Manuel+OCR NLLB çevirir & çökmez / Bas Konuş başlar (Whisper) / SmallTalk hands-free transkript gelir / Konferans iOS'te açılır+çalışır / ML Kit "Hızlı" tier iOS'te yok.
+
+**Sıradaki modele not:** ⚠️ **eaeff15 dersi: PUSH ET** (kod tamam ≠ push). ⚠️ Konferans/SmallTalk iOS'te Whisper-small + NLLB sequential aynı anda RAM'de → iPhone 17 Pro Max 12GB'de sığmalı ama bellek izle; çökerse Konferans'ta Whisper-tiny'ye düş. ⚠️ NLLB canlı modlarda her cümlede 3-session reload (yavaş olabilir); çok yavaşsa decoder_with_past-only resident (~445MB). ⚠️ Heuristic langid < ML Kit doğruluğu — yanlış slot olabilir ama hands-free ÇALIŞIR. ⚠️ Whisper streaming değil → Konferans'ta canlı partial yok ("dinleniyor"). Mehmet kısa/net.
+
+---
+
 ## 2026-06-19 — Claude Opus 4.8 — iOS 3'lü paket: ML Kit fix + NLLB resident hız + SmallTalk iOS'te açıldı (analyze temiz, 196/196, `ios-build` push)
 
 **Devraldım:** Üstteki 2026-06-18 entry'si — NLLB iOS ÇÖZÜLDÜ+doğrulandı; açık iş = (1) ML Kit iOS hiçbir yerde çalışmıyor, (2) NLLB iOS hızı. Mehmet'e önce NLLB yükleme açıklaması + hız sorusu gösterildi (memory'nin isteği).

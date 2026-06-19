@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -48,49 +47,10 @@ class HomeScreen extends StatelessWidget {
     Navigator.of(context).push(MaterialPageRoute(builder: builder));
   }
 
-  /// **Konferans** modu canlı transkripti **Vosk native streaming**'e dayanıyor
-  /// (`conference_streaming_session`); `vosk_flutter_2`'nin iOS implementasyonu
-  /// YOK → iOS'te "platform ios is not supported". Whisper yolu olmadığından
-  /// Konferans iOS'te şimdilik kapalı; çirkin hata yerine nazik "yakında" göster.
-  /// (SmallTalk artık iOS'te AÇIK — Whisper tabanlı Tam/Tam+ tier'larıyla; yalnız
-  /// Vosk'a bağlı "Hızlı" hands-free tier'ı kurulumda iOS'te gizleniyor, 2026-06-19.)
-  void _openLiveMode(BuildContext context, WidgetBuilder builder) {
-    if (Platform.isIOS) {
-      _showIosSoon(context);
-      return;
-    }
-    _push(context, builder);
-  }
-
-  void _showIosSoon(BuildContext context) {
-    final p = HgPalette.of(context);
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: p.noir ? const Color(0xFF1C1A16) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'iOS\'te yakında',
-          style: HgType.serif(20, weight: 600, color: p.text),
-        ),
-        content: Text(
-          'Canlı transkript motoru henüz iOS\'i desteklemiyor; iOS için '
-          'çevrimdışı bir streaming motoru entegre ediliyor. Bu arada Manuel '
-          've Görsel Çeviri\'yi kullanabilirsin.',
-          style: HgType.sans(14, color: p.sub, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              'Tamam',
-              style: HgType.sans(14, weight: 700, color: p.accent),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // Konferans iOS'te artık AÇIK (2026-06-19): canlı transkript iOS'te
+  // [WhisperStreamingTranscriber] (chunked-Whisper) ile çalışır — Vosk yok diye
+  // gösterilen "iOS'te yakında" kapısı kaldırıldı. SmallTalk da açık (Whisper
+  // Tam/Tam+; yalnız Vosk'a bağlı "Hızlı" hands-free tier'ı iOS'te gizli).
 
   @override
   Widget build(BuildContext context) {
@@ -101,8 +61,7 @@ class HomeScreen extends StatelessWidget {
         accent: p.conference,
         title: 'Konferans Modu',
         desc: 'Canlı çeviri, transkript ve yapay zekâ özeti',
-        onTap: () =>
-            _openLiveMode(context, (_) => const ConferenceSetupScreen()),
+        onTap: () => _push(context, (_) => const ConferenceSetupScreen()),
         onArchive: () => _push(context, (_) => const ConferenceArchiveScreen()),
         archiveTooltip: 'Konferanslarım',
       ),

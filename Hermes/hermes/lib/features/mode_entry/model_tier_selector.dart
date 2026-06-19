@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -58,9 +59,21 @@ class ModelTierSelector extends StatefulWidget {
 }
 
 class _ModelTierSelectorState extends State<ModelTierSelector> {
-  late final List<TranslationTier> _tiers = widget.tiers.isEmpty
-      ? [TranslationTier.mlkit]
-      : widget.tiers;
+  // iOS'te ML Kit çevirisi bozuk (static linkage resource bundle'ı kırıyor) →
+  // "Hızlı"(MLKit) tier'ını gizle; yalnız NLLB (+varsa LLM) kalır. Filtre sonrası
+  // boş kalırsa NLLB'ye düş (2026-06-19 iOS kurtarma).
+  late final List<TranslationTier> _tiers = _resolveTiers();
+
+  List<TranslationTier> _resolveTiers() {
+    var t = widget.tiers.isEmpty
+        ? <TranslationTier>[TranslationTier.mlkit]
+        : List<TranslationTier>.of(widget.tiers);
+    if (Platform.isIOS) {
+      t = t.where((e) => e != TranslationTier.mlkit).toList();
+      if (t.isEmpty) t = [TranslationTier.nllb];
+    }
+    return t;
+  }
 
   late TranslationTier _tier = _tiers.contains(widget.initialTier)
       ? widget.initialTier

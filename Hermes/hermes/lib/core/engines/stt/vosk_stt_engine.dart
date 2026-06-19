@@ -22,7 +22,14 @@ import 'stt_engine.dart';
 class VoskSttEngine implements SttEngine {
   static const int _sampleRate = 16000;
 
-  final VoskFlutterPlugin _vosk = VoskFlutterPlugin.instance();
+  /// Vosk yalnız Android'de destekli (`vosk_flutter_2`'nin iOS implementasyonu
+  /// YOK → `VoskFlutterPlugin.instance()` iOS'te kuruluş anında `UnsupportedError`
+  /// fırlatır). Bu yüzden plugin **lazy** yaratılır (field init'te DEĞİL) — aksi
+  /// halde [HybridSttEngine] iOS'te bu motoru kurar kurmaz patlıyor, Whisper
+  /// fallback'e bile ulaşılamıyordu (Bas Konuş "başlatılamadı", 2026-06-19).
+  /// [canHandle] iOS'te erkenden false döndüğü için instance hiç oluşturulmaz.
+  VoskFlutterPlugin? _voskInstance;
+  VoskFlutterPlugin get _vosk => _voskInstance ??= VoskFlutterPlugin.instance();
 
   String? _loadedLang;
   Model? _model;
@@ -39,8 +46,11 @@ class VoskSttEngine implements SttEngine {
   @override
   SttSpeedMode get speedMode => _speedMode;
 
-  /// Vosk bu dili işleyebilir mi? (model var VE cihaza inmiş)
+  /// Vosk bu dili işleyebilir mi? (Android VE model var VE cihaza inmiş)
   Future<bool> canHandle(String language) async {
+    // Vosk yalnız Android'de var → iOS'te erkenden false (plugin'e dokunmadan)
+    // → router Whisper'a düşer, instance hiç yaratılmaz.
+    if (!Platform.isAndroid) return false;
     if (!VoskModels.supports(language)) return false;
     return VoskModelManager.forLang(language).isDownloaded();
   }

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import '../../repositories/conversation_repository.dart' show SessionMode;
 import 'google_mlkit_engine.dart';
 import 'llm_translation_engine.dart';
@@ -54,18 +56,28 @@ const TranslationTier kManualDefaultTier = TranslationTier.mlkit;
 
 /// Seçilen katman için uygun [TranslationEngine] üretir. LLM katmanları
 /// paylaşılan [LlmHost] üzerinden çalışır (tek-LLM-RAM). Gemma gated → [hfToken].
+///
+/// **iOS choke-point (2026-06-19):** ML Kit çevirisi iOS'te bozuk (static linkage
+/// resource bundle'ını kırıyor) → `mlkit` istense bile NLLB'ye yönlendirilir.
+/// Selector tier'ı zaten gizliyor; bu, doğrudan tier geçen ekranlar (Bas Konuş /
+/// Konferans varsayılan mlkit) için son güvence — iOS'te hiçbir yol ML Kit
+/// çalıştırmaz. [isTierReady] de bu fonksiyonu kullandığından otomatik uyumlu.
 TranslationEngine createTranslationEngine(
   TranslationTier tier, {
   String? hfToken,
-}) =>
-    switch (tier) {
-      TranslationTier.mlkit => GoogleMLKitEngine(),
-      TranslationTier.nllb => NllbTranslationEngine(),
-      TranslationTier.gemma =>
-        LlmTranslationEngine(LlmModelDef.gemma, hfToken: hfToken),
-      TranslationTier.qwen =>
-        LlmTranslationEngine(LlmModelDef.qwen, hfToken: hfToken),
-    };
+}) {
+  if (Platform.isIOS && tier == TranslationTier.mlkit) {
+    tier = TranslationTier.nllb;
+  }
+  return switch (tier) {
+    TranslationTier.mlkit => GoogleMLKitEngine(),
+    TranslationTier.nllb => NllbTranslationEngine(),
+    TranslationTier.gemma =>
+      LlmTranslationEngine(LlmModelDef.gemma, hfToken: hfToken),
+    TranslationTier.qwen =>
+      LlmTranslationEngine(LlmModelDef.qwen, hfToken: hfToken),
+  };
+}
 
 /// Bir katman + dil çifti **gerçekten hazır mı** — her iki yönün modeli de cihazda
 /// mı? (KRİTİK: MLKit "hep hazır" DEĞİL — dil paketi (~30MB/dil) inmemiş olabilir;

@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import '../engines/stt/vosk_streaming_controller.dart';
+import '../engines/stt/whisper_streaming_transcriber.dart';
 import '../engines/translation/translation_engine.dart';
 import '../engines/tts/tts_engine.dart';
 import '../repositories/conversation_repository.dart';
@@ -87,9 +89,12 @@ class ConferenceStreamingSession {
   /// Finalleri sıralı işlemek için kuyruk (çeviri+TTS sırası korunur).
   Future<void> _queue = Future<void>.value();
 
-  /// Bu dil için Vosk modeli inmiş mi? (warmup indirme kapısı kararı)
-  static Future<bool> isModelReady(String language) =>
-      VoskStreamingController.isModelReady(language);
+  /// Transkript modeli warmup'a hazır mı? (indirme kapısı kararı)
+  /// - Android: bu dilin **Vosk** modeli inmiş mi.
+  /// - iOS: Vosk yok → **Whisper small** inmiş mi ([WhisperStreamingTranscriber]).
+  static Future<bool> isModelReady(String language) => Platform.isIOS
+      ? WhisperStreamingTranscriber.whisperReady()
+      : VoskStreamingController.isModelReady(language);
 
   /// Ağır hazırlık (ısınma ekranı çağırır): model + çeviri + TTS yükle.
   /// Idempotent.

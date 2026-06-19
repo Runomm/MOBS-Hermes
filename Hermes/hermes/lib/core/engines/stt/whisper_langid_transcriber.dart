@@ -8,6 +8,7 @@ import 'package:whisper_ggml/whisper_ggml.dart';
 
 import '../../audio/streaming_mic_audio_input.dart';
 import '../../audio/wav_writer.dart';
+import '../language_id/heuristic_language_detector.dart';
 import '../language_id/language_detector.dart';
 import '../language_id/ml_kit_language_detector.dart';
 import 'dual_vosk_streaming_controller.dart';
@@ -36,9 +37,17 @@ class WhisperLangIdTranscriber implements DualTranscriber {
     Future<Directory> Function() temporaryDirectory = getTemporaryDirectory,
   })  : _mic = mic ?? StreamingMicAudioInput(),
         _whisper = whisper ?? WhisperCppEngine(),
-        _detector = detector ?? MlKitLanguageDetector(),
+        _detector = detector ?? _defaultDetector(masterLang, localLang),
         _wavWriter = wavWriter,
         _temporaryDirectory = temporaryDirectory;
+
+  /// Varsayılan dil tespiti: Android'de ML Kit Language ID; **iOS'te sezgisel**
+  /// (ML Kit iOS'te bozuk → `detect`=null → transkript düşüyordu, 2026-06-19).
+  /// Hands-free yalnız master↔local arasında karar verir → 2-aday sezgisel yeter.
+  static LanguageDetector _defaultDetector(String master, String local) =>
+      Platform.isIOS
+          ? HeuristicLanguageDetector(candidates: [master, local])
+          : MlKitLanguageDetector();
 
   final String masterLang;
   final String localLang;

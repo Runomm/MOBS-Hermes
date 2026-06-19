@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import '../../core/database/app_database.dart';
 import '../../core/engines/stt/vosk_streaming_controller.dart';
+import '../../core/engines/stt/whisper_streaming_transcriber.dart';
 import '../../core/engines/translation/translation_tier.dart';
 import '../../core/engines/tts/native_tts_engine.dart';
 import '../../core/engines/tts/silent_tts_engine.dart';
@@ -114,7 +116,11 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
         return;
       }
       final missing = <String>[];
-      if (!voskReady) missing.add('Vosk ${_langName(widget.sourceLanguage)}');
+      if (!voskReady) {
+        missing.add(Platform.isIOS
+            ? 'Whisper small (~466MB)'
+            : 'Vosk ${_langName(widget.sourceLanguage)}');
+      }
       if (!transReady) {
         missing.add(
           widget.tier == TranslationTier.nllb
@@ -146,7 +152,10 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
           ? NativeOsTtsEngine()
           : const SilentTtsEngine();
       final session = ConferenceStreamingSession(
-        transcriber: VoskStreamingController(),
+        // iOS'te Vosk yok → Whisper chunked streaming; Android'de Vosk native.
+        transcriber: Platform.isIOS
+            ? WhisperStreamingTranscriber()
+            : VoskStreamingController(),
         repository: _repo,
         // Canlı çeviri: fast=MLKit (hızlı), full=NLLB (offline NMT). Tam çeviri +
         // özet oturum sonunda crunch'ta.
