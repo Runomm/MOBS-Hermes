@@ -127,7 +127,7 @@ class _ConferenceDetailScreenState extends State<ConferenceDetailScreen> {
         // 2-adımlı crunch: ham → "Daha İyi Çevir"; çevrildi → "Özetle".
         if (!summarized) ...[
           const SizedBox(height: 24),
-          if (!hasTranslation)
+          if (!hasTranslation) ...[
             HgGradientButton(
               label: 'Daha İyi Çevir',
               from: p.visual,
@@ -139,8 +139,15 @@ class _ConferenceDetailScreenState extends State<ConferenceDetailScreen> {
                 strokeWidth: 1.8,
               ),
               onTap: _crunching ? null : _deepTranslate,
-            )
-          else
+            ),
+            const SizedBox(height: 10),
+            // Çeviri (NLLB) adımını atla → ham transkripti doğrudan özetle
+            // (Mehmet 2026-06-19).
+            HgGlassButton(
+              label: 'Çevirmeden özetle',
+              onTap: _crunching ? null : _summarizeOnly,
+            ),
+          ] else
             HgGradientButton(
               label: 'Özetle',
               from: p.visual,
@@ -308,6 +315,17 @@ class _ConferenceDetailScreenState extends State<ConferenceDetailScreen> {
     if (!mounted) return;
     setState(() => _crunching = false);
     if (ok) await _load(); // özet görünsün
+  }
+
+  /// "Daha İyi Çevir" adımını atlayıp ham transkripti doğrudan özetle.
+  Future<void> _summarizeOnly() async {
+    final session = _session;
+    if (session == null || _crunching) return;
+    setState(() => _crunching = true);
+    final ok = await runSummarizeOnly(context, _repo, session);
+    if (!mounted) return;
+    setState(() => _crunching = false);
+    if (ok) await _load();
   }
 
   Future<void> _onlineCrunch() async {

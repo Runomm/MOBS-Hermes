@@ -16,6 +16,7 @@ import '../../core/theme/hg_glass.dart';
 import '../../core/theme/hg_tokens.dart';
 import '../../core/theme/hg_typography.dart';
 import '../conference/conference_detail_screen.dart';
+import '../shared/confirm_dialog.dart';
 import '../shared/hg_icons.dart';
 import '../shared/hg_widgets.dart';
 import '../shared/models_required_gate.dart';
@@ -249,6 +250,24 @@ class _SmallTalkScreenState extends State<SmallTalkScreen> {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => ConferenceDetailScreen(sessionId: id)),
     );
+  }
+
+  /// Oturum sonu "kaydedilsin mi?" — kaydet zaten örtük (end() kaydetti);
+  /// burada kullanıcı isterse kaydı siler (Mehmet 2026-06-19).
+  Future<void> _deleteEnded() async {
+    final id = _endedSessionId;
+    if (id == null) return;
+    final ok = await confirmAction(
+      context,
+      title: 'Kaydı sil',
+      message: 'Bu konuşmanın transkripti kaydedilmesin mi? Kayıt kalıcı '
+          'olarak silinecek.',
+      confirmLabel: 'Kaydetme, sil',
+    );
+    if (!ok) return;
+    await _repo.deleteSession(id);
+    if (!mounted) return;
+    Navigator.of(context).popUntil((r) => r.isFirst);
   }
 
   void _fail(Object e) {
@@ -575,6 +594,20 @@ class _SmallTalkScreenState extends State<SmallTalkScreen> {
           HgGlassButton(
             label: 'Ana ekrana dön',
             onTap: () => Navigator.of(context).popUntil((r) => r.isFirst),
+          ),
+          const SizedBox(height: 8),
+          // Kaydet örtük (üstteki seçenekler kaydı tutar); buradan silinir.
+          Center(
+            child: HgPressable(
+              onTap: _deleteEnded,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                child: Text(
+                  'Kaydetme, sil',
+                  style: HgType.sans(13.5, weight: 700, color: p.manual),
+                ),
+              ),
+            ),
           ),
         ],
       ),

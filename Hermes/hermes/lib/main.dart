@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import 'core/config/translation_languages.dart';
 import 'core/engines/stt/stt_engine.dart';
 import 'core/engines/stt/whisper_cpp_engine.dart';
 import 'core/engines/translation/google_mlkit_engine.dart';
@@ -143,7 +144,8 @@ class _ThemeFadeState extends State<_ThemeFade>
   final GlobalKey _boundaryKey = GlobalKey();
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 850), // Mehmet 2026-06-14: biraz daha yavaş
+    // Mehmet 2026-06-19: daha yavaş + elegant gece/gündüz geçişi.
+    duration: const Duration(milliseconds: 1300),
   );
   ui.Image? _snapshot;
 
@@ -200,7 +202,7 @@ class _ThemeFadeState extends State<_ThemeFade>
             child: IgnorePointer(
               child: FadeTransition(
                 opacity: Tween<double>(begin: 1, end: 0).animate(
-                  CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+                  CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic),
                 ),
                 child: RawImage(image: snap, fit: BoxFit.cover),
               ),
@@ -259,14 +261,11 @@ class _TranslationTestScreenState extends State<TranslationTestScreen> {
   /// null = henüz sorulmadı (yükleniyor).
   final Map<String, bool?> _languageReady = {};
 
-  static const Map<String, String> _languages = {
-    'en': 'İngilizce',
-    'tr': 'Türkçe',
-    'es': 'İspanyolca',
-    'fr': 'Fransızca',
-    'de': 'Almanca',
-    'it': 'İtalyanca',
-  };
+  /// Tier'a göre dil listesi (Mehmet 2026-06-19): NLLB seçiliyse küratörlü
+  /// ~30 dil, ML Kit (Hızlı) seçiliyse ML Kit'in desteklediği küme. Merkezi
+  /// liste — lib/core/config/translation_languages.dart.
+  Map<String, String> get _languages =>
+      _tier == TranslationTier.nllb ? kNllbLanguages : kMlkitLanguages;
 
   @override
   void initState() {
@@ -361,6 +360,23 @@ class _TranslationTestScreenState extends State<TranslationTestScreen> {
     } else {
       unawaited(NllbTranslationEngine.unpinShared());
     }
+    // Tier değişince dil listesi de değişir (NLLB ~30 / ML Kit ~10). Seçili dil
+    // yeni listede yoksa makul bir varsayılana çek (Mehmet 2026-06-19).
+    final langs = _languages;
+    setState(() {
+      if (!langs.containsKey(_fromCode)) {
+        _fromCode = langs.containsKey('en') ? 'en' : langs.keys.first;
+      }
+      if (!langs.containsKey(_toCode)) {
+        _toCode = langs.containsKey('tr') ? 'tr' : langs.keys.first;
+      }
+      if (_fromCode == _toCode) {
+        _toCode = langs.keys.firstWhere(
+          (k) => k != _fromCode,
+          orElse: () => _toCode,
+        );
+      }
+    });
     unawaited(_refreshLanguageStates());
   }
 
@@ -839,6 +855,10 @@ class _LangPickerSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = HgPalette.of(context);
     final entries = languages.entries.toList();
+    // Liste uzun (NLLB ~34 dil) → ekranı taşırıp alttakileri kırpmasın diye
+    // kaydırılabilir + yükseklik sınırlı (Mehmet 2026-06-19: "sadece 6 dil
+    // görünüyor" = overflow kırpması).
+    final maxH = MediaQuery.of(context).size.height * 0.62;
     return SafeArea(
       top: false,
       child: Padding(
@@ -863,8 +883,24 @@ class _LangPickerSheet extends StatelessWidget {
               ),
               Text(title, style: HgType.serif(22, weight: 600, color: p.text)),
               const SizedBox(height: 6),
-              for (var i = 0; i < entries.length; i++)
-                _row(p, entries[i].key, entries[i].value, i < entries.length - 1),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxH),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < entries.length; i++)
+                        _row(
+                          p,
+                          entries[i].key,
+                          entries[i].value,
+                          i < entries.length - 1,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),

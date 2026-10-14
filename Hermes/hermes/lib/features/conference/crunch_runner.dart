@@ -165,6 +165,83 @@ Future<bool> runSummarize(
   }
 }
 
+/// **Faz B′ — Çevirmeden Özetle (yerel).** "Daha İyi Çevir" adımını atlayıp ham
+/// transkripti doğrudan Gemma ile özetler → `crunchSummary` + başlık +
+/// `crunchedAt` (çeviri üretilmez). Hızlı özet isteyen kullanıcı için (Mehmet
+/// 2026-06-19). Transkript boşsa / model yoksa uyarır. Başarılıysa `true`.
+Future<bool> runSummarizeOnly(
+  BuildContext context,
+  ConversationRepository repo,
+  SessionRow session,
+) async {
+  final messages = await repo.listMessagesForSession(session.id);
+  final transcript = messages.map((m) => m.sourceText).join('\n').trim();
+  if (transcript.isEmpty) {
+    if (context.mounted) {
+      await _info(context, 'Transkript boş', 'Özetlenecek metin yok.');
+    }
+    return false;
+  }
+
+  final crunchModel = LlmModelDef.crunch;
+  final modelReady = await LlmTranslationEngine(crunchModel).isLanguageReady('en');
+  if (!modelReady) {
+    if (context.mounted) {
+      await _info(
+        context,
+        'Özet modeli gerekli',
+        '${crunchModel.name} (~${crunchModel.sizeMb}MB) cihazda kurulu olmalı. '
+            'Ayarlar → Özet Modeli (Crunch)\'tan indirip tekrar dene.',
+      );
+    }
+    return false;
+  }
+
+  final progress = ValueNotifier<double>(0);
+  if (context.mounted) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) =>
+          _CrunchProgressDialog(progress: progress, label: 'Özetleniyor…'),
+    );
+  }
+
+  final service = CrunchService(
+    translate: (text, _, _) async => text,
+    run: (prompt) =>
+        LlmHost.instance.generate(crunchModel, prompt, maxTokens: 1024),
+  );
+
+  await NllbTranslationEngine.unloadShared();
+  try {
+    final result = await service.summarize(
+      translationText: transcript,
+      targetLang: session.targetLanguage,
+      onProgress: (p) => progress.value = p,
+    );
+    await repo.setCrunchSummary(
+      session.id,
+      title: result.title,
+      summary: result.summary,
+    );
+    if (context.mounted) Navigator.of(context).pop();
+    return true;
+  } catch (e) {
+    if (context.mounted) {
+      Navigator.of(context).pop();
+      await _info(context, 'Özet başarısız', '$e');
+    }
+    return false;
+  } finally {
+    progress.dispose();
+    try {
+      await LlmHost.instance.unload();
+    } catch (_) {}
+    unawaited(NllbTranslationEngine.preloadShared());
+  }
+}
+
 /// **Çevrimiçi tam crunch (Gemini).** Düşük-RAM / yerel modeli çalıştıramayan
 /// cihazlar için: transkripti kullanıcının kendi [apiKey]'iyle Gemini'ye gönderip
 /// hedef dile çevirir + özetler + başlık üretir → `crunchTranslation` +
@@ -329,7 +406,7 @@ Future<void> _info(BuildContext context, String title, String body) {
   );
 }
 
-class _CrunchProgressDialog extends StatelessWidget {
+class _CrunchProgressDialog extends StatefulWidget {
   const _CrunchProgressDialog({
     required this.progress,
     this.label = 'İşleniyor…',
@@ -337,6 +414,32 @@ class _CrunchProgressDialog extends StatelessWidget {
 
   final ValueNotifier<double> progress;
   final String label;
+
+  @override
+  State<_CrunchProgressDialog> createState() => _CrunchProgressDialogState();
+}
+
+class _CrunchProgressDialogState extends State<_CrunchProgressDialog> {
+  /// İlerleme ilk ölçülebilir değere ulaştığında (p>0) damgalanır → geçen süreyi
+  /// buradan sayıp kümülatif-ortalama hızla kalan süreyi (ETA) kestiririz
+  /// (Mehmet 2026-06-19). Download'daki [etaLabel] kalıbıyla aynı format.
+  DateTime? _firstProgressAt;
+
+  /// Geçen süreden + ilerlemeden tahmini kalan süre. p çok küçükken (<%3)
+  /// tahmin çok oynak olur → gösterme.
+  String? _etaLabel(double p) {
+    final start = _firstProgressAt;
+    if (start == null || p < 0.03 || p >= 1) return null;
+    final elapsed = DateTime.now().difference(start).inSeconds;
+    if (elapsed < 1) return null;
+    // Kümülatif ortalama: toplam ≈ elapsed / p → kalan = toplam * (1 - p).
+    final remaining = (elapsed / p * (1 - p)).round();
+    if (remaining <= 0) return null;
+    if (remaining < 60) return '${remaining}sn';
+    final m = remaining ~/ 60;
+    final ss = remaining % 60;
+    return ss == 0 ? '~${m}dk' : '~${m}dk ${ss}sn';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -351,50 +454,66 @@ class _CrunchProgressDialog extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: ValueListenableBuilder<double>(
-            valueListenable: progress,
-            builder: (context, p, _) => Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    HgIcon(
-                      HgIcons.sparkle,
-                      size: 22,
-                      color: pal.visual,
-                      strokeWidth: 1.8,
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      label,
-                      style: HgType.sans(17, weight: 600, color: pal.text),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: p > 0 ? p : null,
-                    minHeight: 8,
-                    backgroundColor: pal.hairline,
-                    color: pal.visual,
+            valueListenable: widget.progress,
+            builder: (context, p, _) {
+              if (p > 0 && _firstProgressAt == null) {
+                _firstProgressAt = DateTime.now();
+              }
+              final eta = _etaLabel(p);
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      HgIcon(
+                        HgIcons.sparkle,
+                        size: 22,
+                        color: pal.visual,
+                        strokeWidth: 1.8,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        widget.label,
+                        style: HgType.sans(17, weight: 600, color: pal.text),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  p > 0
-                      ? 'tahmini %${(p * 100).toStringAsFixed(0)}'
-                      : 'başlıyor…',
-                  style: HgType.sans(13, color: pal.sub),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Tam çeviri + özet üretiliyor, bu biraz sürebilir.',
-                  style: HgType.sans(12, color: pal.faint),
-                ),
-              ],
-            ),
+                  const SizedBox(height: 18),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: p > 0 ? p : null,
+                      minHeight: 8,
+                      backgroundColor: pal.hairline,
+                      color: pal.visual,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        p > 0
+                            ? 'tahmini %${(p * 100).toStringAsFixed(0)}'
+                            : 'başlıyor…',
+                        style: HgType.sans(13, color: pal.sub),
+                      ),
+                      if (eta != null)
+                        Text(
+                          'kalan $eta',
+                          style: HgType.sans(13, weight: 600, color: pal.sub),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tam çeviri + özet üretiliyor, bu biraz sürebilir.',
+                    style: HgType.sans(12, color: pal.faint),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),

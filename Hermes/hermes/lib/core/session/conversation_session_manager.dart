@@ -474,6 +474,12 @@ class ConversationSessionManager {
     }
   }
 
+  /// UI'dan manuel oynatma (çeviri baloncuğundaki seslendir butonu) — aynı
+  /// quality-aware TTS yolu + feedback guard'ı yeniden kullanır (Mehmet
+  /// 2026-06-19: narration switch yerine baloncuk play butonu).
+  Future<void> speak(String text, String languageCode) =>
+      _speakWithMode(text, languageCode);
+
   Future<File> _dumpToTempWav(List<double> samples) async {
     final dir = await _temporaryDirectory();
     final path = p.join(

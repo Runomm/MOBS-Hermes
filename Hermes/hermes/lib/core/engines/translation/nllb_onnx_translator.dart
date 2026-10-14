@@ -70,6 +70,9 @@ class NllbOnnxTranslator {
   static const int eosId = 2;
 
   /// NLLB dil tokenı HF id'leri — SP model'de YOK (HF eklenmiş özel tokenlar).
+  /// `id = 256001 + FAIRSEQ_LANGUAGE_CODES indeksi` (transformers tokenization_nllb).
+  /// 6 anchor ile doğrulandı (2026-06-19): deu=41→256042, eng=46→256047,
+  /// fra=56→256057, ita=76→256077, spa=160→256161, tur=183→256184.
   static const Map<String, int> _langIds = {
     'tur_Latn': 256184,
     'eng_Latn': 256047,
@@ -77,6 +80,36 @@ class NllbOnnxTranslator {
     'deu_Latn': 256042,
     'fra_Latn': 256057,
     'ita_Latn': 256077,
+    // Yeni küratörlü diller (Mehmet 2026-06-19).
+    'nld_Latn': 256127, // nl  (idx 126)
+    'rus_Cyrl': 256147, // ru  (idx 146)
+    'zho_Hans': 256200, // zh  (idx 199)
+    'arb_Arab': 256011, // ar  (idx 10)
+    'por_Latn': 256141, // pt  (idx 140)
+    'pol_Latn': 256140, // pl  (idx 139)
+    'ukr_Cyrl': 256188, // uk  (idx 187)
+    'jpn_Jpan': 256079, // ja  (idx 78)
+    'kor_Hang': 256098, // ko  (idx 97)
+    'ell_Grek': 256046, // el  (idx 45)
+    'swe_Latn': 256167, // sv  (idx 166)
+    'dan_Latn': 256041, // da  (idx 40)
+    'nob_Latn': 256129, // no  (idx 128)
+    'fin_Latn': 256055, // fi  (idx 54)
+    'ces_Latn': 256036, // cs  (idx 35)
+    'ron_Latn': 256145, // ro  (idx 144)
+    'hun_Latn': 256071, // hu  (idx 70)
+    'bul_Cyrl': 256033, // bg  (idx 32)
+    'hrv_Latn': 256070, // hr  (idx 69)
+    'slk_Latn': 256154, // sk  (idx 153)
+    'ind_Latn': 256075, // id  (idx 74)
+    'vie_Latn': 256193, // vi  (idx 192)
+    'tha_Thai': 256175, // th  (idx 174)
+    'hin_Deva': 256068, // hi  (idx 67)
+    'pes_Arab': 256053, // fa  (idx 52)
+    'heb_Hebr': 256067, // he  (idx 66)
+    'srp_Cyrl': 256164, // sr  (idx 163)
+    'azj_Latn': 256020, // az  (idx 19)
+    'kat_Geor': 256086, // ka  (idx 85)
   };
 
   int _langId(String code) => _langIds[code] ??

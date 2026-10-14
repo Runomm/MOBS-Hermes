@@ -7,6 +7,7 @@ import '../../core/theme/hg_tokens.dart';
 import '../../core/theme/hg_typography.dart';
 import '../shared/hg_icons.dart';
 import '../shared/hg_widgets.dart';
+import '../shared/swipe_to_delete.dart';
 import 'conference_detail_screen.dart';
 import 'conference_format.dart';
 
@@ -61,6 +62,14 @@ class _ConferenceArchiveScreenState extends State<ConferenceArchiveScreen> {
     await _load();
   }
 
+  /// Kaydı sil (swipe → çöp). Mehmet 2026-06-19: pop-up yerine sola-kaydır UX.
+  Future<void> _delete(SessionRow s) async {
+    await _repo.deleteSession(s.id);
+    if (mounted) {
+      setState(() => _sessions = _sessions.where((x) => x.id != s.id).toList());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = HgPalette.of(context);
@@ -78,10 +87,21 @@ class _ConferenceArchiveScreenState extends State<ConferenceArchiveScreen> {
                 ? Center(child: CircularProgressIndicator(color: p.conference))
                 : _sessions.isEmpty
                 ? _empty(p)
-                : ListView.builder(
-                    padding: const EdgeInsets.only(top: 2, bottom: 8),
-                    itemCount: _sessions.length,
-                    itemBuilder: (context, i) => _row(p, _sessions[i]),
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: SwipeDeleteHint(),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          itemCount: _sessions.length,
+                          itemBuilder: (context, i) => _row(p, _sessions[i]),
+                        ),
+                      ),
+                    ],
                   ),
           ),
         ],
@@ -109,7 +129,9 @@ class _ConferenceArchiveScreenState extends State<ConferenceArchiveScreen> {
     final crunched = s.crunchedAt != null;
     final date = ConferenceFormat.date(s.startedAt);
     final title = crunched ? (s.crunchTitle ?? 'Konferans') : date;
-    return Padding(
+    return SwipeToDelete(
+      onDelete: () => _delete(s),
+      child: Padding(
       padding: const EdgeInsets.only(bottom: 11),
       child: HgPressable(
         onTap: () => _open(s),
@@ -163,6 +185,7 @@ class _ConferenceArchiveScreenState extends State<ConferenceArchiveScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

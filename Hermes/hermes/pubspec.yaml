@@ -138,6 +138,12 @@ flutter_launcher_icons:
   android: true
   ios: true
   remove_alpha_ios: true
+  # Android adaptive icon (Mehmet 2026-06-19): şeffaf foreground = Hermes logosu,
+  # nötr krem zemin. Not: Android adaptive icon her zaman bir arka plan katmanı
+  # ister → tam-şeffaf launcher mümkün değil; en yakını budur. Foreground PNG
+  # alfası korunsun diye remove_alpha verilmiyor.
+  adaptive_icon_foreground: "assets/icon/hermes_logo_transparent.png"
+  adaptive_icon_background: "#F3ECD9"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

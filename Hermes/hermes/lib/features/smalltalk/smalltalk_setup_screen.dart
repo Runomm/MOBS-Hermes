@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 
+import '../../core/config/translation_languages.dart';
 import '../../core/engines/translation/translation_tier.dart';
 import '../../core/repositories/conversation_repository.dart';
 import '../../core/theme/hg_glass.dart';
@@ -36,23 +37,20 @@ class SmallTalkSetupScreen extends StatefulWidget {
 enum _Voice { handsfree, pushtotalk }
 
 class _SmallTalkSetupScreenState extends State<SmallTalkSetupScreen> {
-  static const _languages = <String, String>{
-    'tr': 'Türkçe',
-    'en': 'İngilizce',
-    'es': 'İspanyolca',
-    'de': 'Almanca',
-    'fr': 'Fransızca',
-  };
+  // Canlı modlar Vosk STT'ye bağlı → yalnız Vosk modeli olan diller (nl/ru/zh
+  // eklendi, 2026-06-19). Merkezi liste.
+  static const _languages = kLiveLanguages;
   static const _steps = ['Diller', 'Yöntem', 'Mod'];
 
   int _step = 0;
   String _master = 'tr';
   String _local = 'en';
   _Voice _voice = _Voice.handsfree;
-  bool _narration = false;
 
-  /// Eller serbest katmanı (fast/full/fullPlus).
-  SessionQuality _hfQuality = SessionQuality.full;
+  /// Eller serbest katmanı (fast/full/fullPlus). Android'de **Hızlı** varsayılan
+  /// (Vosk×2, düşük gecikme — Mehmet 2026-06-19); iOS'te Hızlı yok → Tam.
+  SessionQuality _hfQuality =
+      Platform.isIOS ? SessionQuality.full : SessionQuality.fast;
 
   /// Bas-konuş çeviri katmanı.
   TranslationTier _pttTier = TranslationTier.mlkit;
@@ -63,13 +61,27 @@ class _SmallTalkSetupScreenState extends State<SmallTalkSetupScreen> {
       ? _hfQuality == SessionQuality.fullPlus
       : _pttTier == TranslationTier.nllb;
 
-  void _cycle(bool master) {
-    final keys = _languages.keys.toList();
+  /// Dil seçimi (Mehmet 2026-06-19): tıkla-döngü yerine alt-sayfa picker.
+  /// Karşı tarafın seçili dili devre dışı (iki dil farklı olmalı).
+  Future<void> _pickLang(bool master) async {
+    final selected = master ? _master : _local;
+    final other = master ? _local : _master;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SmallTalkLangSheet(
+        languages: _languages,
+        selected: selected,
+        disabled: other,
+        title: master ? 'Senin dilin' : 'Karşı tarafın dili',
+      ),
+    );
+    if (picked == null || !mounted) return;
     setState(() {
       if (master) {
-        _master = keys[(keys.indexOf(_master) + 1) % keys.length];
+        _master = picked;
       } else {
-        _local = keys[(keys.indexOf(_local) + 1) % keys.length];
+        _local = picked;
       }
     });
   }
@@ -111,7 +123,9 @@ class _SmallTalkSetupScreenState extends State<SmallTalkSetupScreen> {
           builder: (_) => SmallTalkScreen(
             masterLang: _master,
             localLang: _local,
-            narrationEnabled: _narration,
+            // Otomatik narration kaldırıldı → seslendirme yalnız baloncuk
+            // play butonuyla (Mehmet 2026-06-19).
+            narrationEnabled: false,
             quality: _hfQuality,
           ),
         ),
@@ -290,13 +304,13 @@ class _SmallTalkSetupScreenState extends State<SmallTalkSetupScreen> {
           children: [
             Column(
               children: [
-                _langCard(p, 'Sen · master', _master, () => _cycle(true)),
+                _langCard(p, 'Sen · master', _master, () => _pickLang(true)),
                 const SizedBox(height: 12),
                 _langCard(
                   p,
                   'Karşı taraf · local',
                   _local,
-                  () => _cycle(false),
+                  () => _pickLang(false),
                 ),
               ],
             ),
@@ -445,36 +459,9 @@ class _SmallTalkSetupScreenState extends State<SmallTalkSetupScreen> {
             accent: p.smalltalk,
             onTap: () => setState(() => _voice = _Voice.pushtotalk),
           ),
-          if (_voice == _Voice.handsfree) ...[
-            const SizedBox(height: 13),
-            HgGlass(
-              radius: 16,
-              elevated: false,
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
-              child: Row(
-                children: [
-                  HgIcon(
-                    HgIcons.headphone,
-                    size: 20,
-                    color: p.sub,
-                    strokeWidth: 1.8,
-                  ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Text(
-                      'Karşının çevirisi kulaklığına seslendirilsin',
-                      style: HgType.sans(13, color: p.text, height: 1.35),
-                    ),
-                  ),
-                  Switch(
-                    value: _narration,
-                    activeTrackColor: p.accent,
-                    onChanged: (v) => setState(() => _narration = v),
-                  ),
-                ],
-              ),
-            ),
-          ],
+          // "Kulaklığa seslendir" switch'i kaldırıldı (Mehmet 2026-06-19):
+          // otomatik narration yerine her çeviri baloncuğundaki seslendir
+          // butonuyla manuel oynatma → sistem kendini dinlemez.
         ],
       ),
     );
@@ -573,6 +560,149 @@ class _SmallTalkSetupScreenState extends State<SmallTalkSetupScreen> {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// SmallTalk dil seçimi alt-sayfası (Mehmet 2026-06-19: tıkla-döngü yerine
+/// liquid-glass picker). Karşı tarafın seçili dili [disabled] → seçilemez.
+class _SmallTalkLangSheet extends StatelessWidget {
+  const _SmallTalkLangSheet({
+    required this.languages,
+    required this.selected,
+    required this.disabled,
+    required this.title,
+  });
+
+  final Map<String, String> languages;
+  final String selected;
+  final String disabled;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = HgPalette.of(context);
+    final entries = languages.entries.toList();
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Hg.pad, 0, Hg.pad, 16),
+        child: HgGlass(
+          radius: 24,
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: p.hairline,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Text(title, style: HgType.serif(22, weight: 600, color: p.text)),
+              const SizedBox(height: 6),
+              // Liste taşıp alttaki dilleri kırpmasın → kaydırılabilir + sınırlı
+              // yükseklik (Mehmet 2026-06-19: "sadece 6 dil görünüyor").
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.6,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < entries.length; i++)
+                        _row(
+                          context,
+                          p,
+                          entries[i].key,
+                          entries[i].value,
+                          i < entries.length - 1,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _row(
+    BuildContext context,
+    HgPalette p,
+    String code,
+    String name,
+    bool divider,
+  ) {
+    final isSel = code == selected;
+    final isDisabled = code == disabled;
+    final child = Container(
+      padding: const EdgeInsets.symmetric(vertical: 13),
+      decoration: divider
+          ? BoxDecoration(
+              border: Border(bottom: BorderSide(color: p.hairline, width: 0.5)),
+            )
+          : null,
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: p.accent.withValues(alpha: p.noir ? 0.22 : 0.14),
+            ),
+            child: Center(
+              child: Text(
+                code.toUpperCase(),
+                style: HgType.sans(
+                  12,
+                  weight: 800,
+                  color: isDisabled ? p.faint : p.accent,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Text(
+              name,
+              style: HgType.sans(
+                15.5,
+                weight: isSel ? 700 : 600,
+                color: isDisabled
+                    ? p.faint
+                    : (isSel ? p.accent : p.text),
+              ),
+            ),
+          ),
+          if (isDisabled)
+            Text(
+              'kullanımda',
+              style: HgType.sans(11.5, color: p.faint, weight: 600),
+            ),
+          if (isSel && !isDisabled)
+            HgIcon(HgIcons.check, size: 16, color: p.accent, strokeWidth: 2.6),
+        ],
+      ),
+    );
+    if (isDisabled) {
+      return Opacity(opacity: 0.55, child: child);
+    }
+    return HgPressable(
+      onTap: () => Navigator.of(context).pop(code),
+      child: child,
     );
   }
 }

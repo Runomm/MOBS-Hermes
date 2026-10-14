@@ -39,6 +39,10 @@ abstract class DualTranscriber {
   Future<void> start();
   Future<void> stop();
   Future<void> dispose();
+
+  /// TTS oynarken mic'i geçici sustur (kendi seslendirmesini transkripte
+  /// çevirmesin). Varsayılan no-op — destekleyen implementasyon override eder.
+  void setMuted(bool muted) {}
 }
 
 /// Hands-free için **çift Vosk tanıyıcı** streaming kontrolcüsü (S3, 2026-06-05).
@@ -100,6 +104,10 @@ class DualVoskStreamingController implements DualTranscriber {
   // getFinalResult/reset sırasında gelen chunk'ları beslememek için kilit.
   bool _harvesting = false;
 
+  // TTS (seslendirme) oynarken mic'i sustur → kendi sesini tanıyıcıya verme
+  // (feedback/echo döngüsü; Mehmet 2026-06-19).
+  bool _muted = false;
+
   bool get isRunning => _running;
 
   /// İki dilin Vosk modeli de inmiş mi? (warmup indirme kapısı kararı)
@@ -152,6 +160,9 @@ class DualVoskStreamingController implements DualTranscriber {
     final raw = await _recorder.startStream(_config);
     _pcmSub = raw.listen(
       (chunk) {
+        // Mute (TTS oynarken): chunk'ı ne VAD'e ne tanıyıcıya ver → kendi
+        // seslendirmesini duyup transkripte çevirmesin (echo döngüsü).
+        if (_muted) return;
         toVad.add(chunk);
         if (!_harvesting) {
           unawaited(_masterRec?.acceptWaveformBytes(chunk));
@@ -235,6 +246,14 @@ class DualVoskStreamingController implements DualTranscriber {
     _speechActive = false;
     _partialTimer?.cancel();
     _partialTimer = null;
+  }
+
+  @override
+  void setMuted(bool muted) {
+    if (_muted == muted) return;
+    _muted = muted;
+    // Susturmaya geçerken devam eden hipotezi at (yarım echo final'ı çıkmasın).
+    if (muted) unawaited(_discard());
   }
 
   @override

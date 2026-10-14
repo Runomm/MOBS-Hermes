@@ -81,6 +81,30 @@ class VoskModels {
       folder: 'it',
       sizeMb: 47,
     ),
+    // 2026-06-19: canlı modlara nl/ru/zh eklendi (Mehmet). Mirror'daki dosya
+    // adları + boyutlar WebFetch ile doğrulandı; Çince folder `zh` ama model
+    // dosyası `cn` ekli (vosk-model-small-cn-0.22).
+    'nl': VoskModelInfo(
+      langCode: 'nl',
+      langName: 'Felemenkçe',
+      modelName: 'vosk-model-small-nl-0.22',
+      folder: 'nl',
+      sizeMb: 40,
+    ),
+    'ru': VoskModelInfo(
+      langCode: 'ru',
+      langName: 'Rusça',
+      modelName: 'vosk-model-small-ru-0.22',
+      folder: 'ru',
+      sizeMb: 46,
+    ),
+    'zh': VoskModelInfo(
+      langCode: 'zh',
+      langName: 'Çince',
+      modelName: 'vosk-model-small-cn-0.22',
+      folder: 'zh',
+      sizeMb: 44,
+    ),
   };
 
   /// Bu dilin bir Vosk modeli var mı? (router'da Vosk mı Whisper mı kararı)

@@ -124,11 +124,11 @@ void main() {
     expect(find.byKey(const ValueKey('ocr-block-0')), findsOneWidget);
     expect(find.textContaining('ÇEVİRİ('), findsNothing);
 
-    // 2) Bloğa dokun → en→tr çeviri (kutu overlay + sonuç kartı).
+    // 2) Bloğa dokun → en→tr çeviri foto-üstü baloncukta görünür. Alt sonuç
+    // kartı kaldırıldı (Mehmet 2026-06-19) → yalnız baloncuk.
     await tester.tap(find.byKey(const ValueKey('ocr-block-0')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('ÇEVİRİ(en→tr): Hello world'), findsWidgets);
-    expect(find.text('Hello world'), findsOneWidget); // sonuç kartı orijinali
+    expect(find.textContaining('ÇEVİRİ(en→tr): Hello world'), findsOneWidget);
   });
 
   testWidgets('boş OCR sonucu bilgi dialog\'u gösterir', (tester) async {

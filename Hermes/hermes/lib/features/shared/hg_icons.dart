@@ -202,6 +202,13 @@ class HgIcons {
 
   static const check = HgIconData([HgIconShape('M5 12.5l4.5 4.5L19 7')]);
 
+  static const trash = HgIconData([
+    HgIconShape('M4 7h16'),
+    HgIconShape('M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7'),
+    HgIconShape('M6 7l1 12.2A1.8 1.8 0 0 0 8.8 21h6.4a1.8 1.8 0 0 0 1.8-1.8L18 7'),
+    HgIconShape('M10 11v6M14 11v6'),
+  ]);
+
   static const warning = HgIconData([
     HgIconShape('M12 3.5l9.2 16.5H2.8L12 3.5z'),
     HgIconShape('M12 10v4.2'),

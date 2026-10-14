@@ -94,6 +94,12 @@ class SmallTalkStreamingSession {
   bool _prepared = false;
   bool get isPrepared => _prepared;
   bool _stopping = false;
+
+  /// TTS (seslendirme) oynarken true — tek mic'li hands-free'de sistemin kendi
+  /// sesini dinleyip transkripte çevirmesini engeller (Mehmet 2026-06-19:
+  /// "her seslendirme bitene kadar mikrofonu beklemeye al").
+  bool _ttsSpeaking = false;
+
   String? _lastText;
 
   /// Son yönlendirilen konuşmacı (histerezis için). Fast (Vosk) modda iki dilin
@@ -188,7 +194,9 @@ class SmallTalkStreamingSession {
   }
 
   void _onFinal(DualTranscript d) {
-    if (_stopping) return;
+    // TTS oynarken gelen finalleri yok say → sistem kendi seslendirmesini
+    // transkripte çevirmesin (feedback guard).
+    if (_stopping || _ttsSpeaking) return;
     final picked = _routeWithHysteresis(d);
     if (picked == null) return;
     final (isMaster, text) = picked;
@@ -235,7 +243,7 @@ class SmallTalkStreamingSession {
           _narrationActive &&
           !_stopping &&
           translated.trim().isNotEmpty) {
-        await tts.speak(translated, toLang);
+        await _speakGuarded(translated, toLang);
       }
     } catch (e) {
       if (!_errors.isClosed) _errors.add(e.toString());
@@ -247,7 +255,25 @@ class SmallTalkStreamingSession {
   Future<void> playMessage(SmallTalkMessage msg) async {
     if (!msg.isMaster) _narrationActive = false;
     if (msg.translation.trim().isEmpty) return;
-    await tts.speak(msg.translation, msg.translationLang);
+    await _speakGuarded(msg.translation, msg.translationLang);
+  }
+
+  /// TTS'i feedback guard ile oynat. İki katman (Mehmet 2026-06-19, "cihaz hâlâ
+  /// kendini dinliyor"):
+  /// 1) `transcriber.setMuted` → mic PCM'i hiç tanıyıcıya/VAD'e verilmez (echo
+  ///    birikmez); TTS bitince ~350ms cooldown ile hoparlör kuyruğu da yutulur.
+  /// 2) `_ttsSpeaking` → bu pencerede gelen final'ler [_onFinal]'de yine drop.
+  Future<void> _speakGuarded(String text, String lang) async {
+    _ttsSpeaking = true;
+    transcriber.setMuted(true);
+    try {
+      await tts.speak(text, lang);
+    } finally {
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      transcriber.setMuted(false);
+      _ttsSpeaking = false;
+      _lastText = null; // echo sonrası gerçek tekrar bloklanmasın
+    }
   }
 
   Future<int?> end() async {

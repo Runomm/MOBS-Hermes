@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/config/translation_languages.dart';
 import '../../core/engines/language_id/language_detector.dart';
 import '../../core/engines/language_id/ml_kit_language_detector.dart';
 import '../../core/engines/ocr/mlkit_text_recognizer.dart';
@@ -66,14 +66,9 @@ class OcrTranslateScreen extends StatefulWidget {
 }
 
 class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
-  /// Faz 1 desteklenen diller (MLKit çeviri). `auto` yalnız kaynak için.
-  static const Map<String, String> _languages = {
-    'tr': 'Türkçe',
-    'en': 'İngilizce',
-    'es': 'İspanyolca',
-    'de': 'Almanca',
-    'fr': 'Fransızca',
-  };
+  /// Desteklenen diller (ML Kit çeviri; nl/ru/zh/ar dahil). `auto` yalnız kaynak
+  /// için. Merkezi liste (2026-06-19).
+  static const Map<String, String> _languages = kMlkitLanguages;
 
   static const String _auto = 'auto';
 
@@ -99,11 +94,9 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
   List<OcrBlock> _blocks = const [];
   Size? _imageSize;
 
-  /// Seçili blok + çevirisi (Lens overlay + sonuç kartı).
+  /// Seçili blok + çevirisi (foto-üstü Lens baloncuğu).
   int? _selectedBlock;
-  String? _blockSource;
   String? _blockTranslation;
-  String? _detectedLabel; // auto tespit edilen dil rozeti
 
   bool get _valid => _source == _auto || _source != _target;
   bool get _canPick => _valid && !_busy && _modelReady;
@@ -178,9 +171,7 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
       _blocks = const [];
       _imageSize = null;
       _selectedBlock = null;
-      _blockSource = null;
       _blockTranslation = null;
-      _detectedLabel = null;
     });
     String? info;
     try {
@@ -213,14 +204,11 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
     setState(() {
       _busy = true;
       _selectedBlock = i;
-      _blockSource = block.text.trim();
       _blockTranslation = null;
-      _detectedLabel = null;
     });
     String? info;
     try {
       String? from = _source == _auto ? null : _source;
-      String? detectedLabel;
       if (from == null) {
         final res = await _detector.detect(block.text, minConfidence: 0.5);
         final code = res?.languageCode;
@@ -229,15 +217,11 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
           return;
         }
         from = code;
-        detectedLabel = _languages[code];
       }
       if (from == _target) {
         // Kaynak = hedef → çeviriye gerek yok.
         if (mounted) {
-          setState(() {
-            _blockTranslation = block.text.trim();
-            _detectedLabel = detectedLabel;
-          });
+          setState(() => _blockTranslation = block.text.trim());
         }
         return;
       }
@@ -246,10 +230,7 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
         await engine.ensureModelLoaded(from, _target);
         final translated = await engine.translate(block.text, from, _target);
         if (!mounted) return;
-        setState(() {
-          _blockTranslation = translated.trim();
-          _detectedLabel = detectedLabel;
-        });
+        setState(() => _blockTranslation = translated.trim());
       } finally {
         await engine.dispose();
       }
@@ -499,10 +480,8 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (_blockTranslation != null) ...[
-                      _resultCard(p, glass: 42),
-                      const SizedBox(height: 10),
-                    ],
+                    // Alt sonuç kartı kaldırıldı (Mehmet 2026-06-19): görsel
+                    // üstündeki çeviri baloncuğu yeterli, alttaki tekrar gereksiz.
                     _captureButtons(p, compact: true, glass: 42),
                   ],
                 ),
@@ -583,41 +562,72 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
     final r = b.boundingBox;
     final selected = _selectedBlock == i;
     final translated = selected && _blockTranslation != null;
+    final left = dx + r.left * scale;
+    final top = dy + r.top * scale;
+    final w = r.width * scale;
+    final h = r.height * scale;
+
+    if (translated) {
+      // Çeviri baloncuğu: orijinal blok genişliğini taban alır ama metin uzunsa
+      // tek satıra SIKIŞTIRIP fontu okunamaz küçültmek yerine (eski FittedBox
+      // scaleDown tuzağı) aşağı doğru büyüyüp SARAR — makul, okunur font kalır.
+      final text = _blockTranslation!;
+      // Biraz daha büyük, okunur font (Mehmet 2026-06-19); uzun metinde küçülür
+      // ama tabanı yüksek tutuldu, sararak çok satıra yayılır.
+      final fontSize = text.length > 90
+          ? 13.0
+          : text.length > 48
+          ? 15.0
+          : 17.0;
+      final boxW = w < 72 ? 72.0 : w; // çok dar bloklarda min genişlik
+      return Positioned(
+        left: left,
+        top: top,
+        width: boxW,
+        child: GestureDetector(
+          key: ValueKey('ocr-block-$i'),
+          onTap: () => _onTapBlock(i),
+          child: Container(
+            constraints: BoxConstraints(minHeight: h),
+            decoration: BoxDecoration(
+              color: p.visual,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+            child: Text(
+              text,
+              textAlign: TextAlign.center,
+              softWrap: true,
+              style: HgType.sans(
+                fontSize,
+                weight: 700,
+                color: Colors.white,
+                height: 1.2,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Positioned(
-      left: dx + r.left * scale,
-      top: dy + r.top * scale,
-      width: r.width * scale,
-      height: r.height * scale,
+      left: left,
+      top: top,
+      width: w,
+      height: h,
       child: GestureDetector(
         key: ValueKey('ocr-block-$i'),
         onTap: () => _onTapBlock(i),
         child: Container(
           decoration: BoxDecoration(
-            color: translated
-                ? p.visual
-                : p.visual.withValues(alpha: selected ? 0.30 : 0.12),
+            color: p.visual.withValues(alpha: selected ? 0.30 : 0.12),
             borderRadius: BorderRadius.circular(4),
             border: Border.all(
-              color: p.visual.withValues(alpha: translated ? 1 : 0.7),
-              width: translated ? 0 : 1.2,
+              color: p.visual.withValues(alpha: 0.7),
+              width: 1.2,
             ),
           ),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 3),
-          child: translated
-              ? FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    _blockTranslation!,
-                    textAlign: TextAlign.center,
-                    style: HgType.sans(
-                      13,
-                      weight: 700,
-                      color: Colors.white,
-                    ),
-                  ),
-                )
-              : null,
         ),
       ),
     );
@@ -689,82 +699,6 @@ class _OcrTranslateScreenState extends State<OcrTranslateScreen> {
     );
   }
 
-  Widget _resultCard(HgPalette p, {double glass = 74}) {
-    final src = _blockSource ?? '';
-    final translated = _blockTranslation ?? '';
-    return HgGlass(
-      radius: 20,
-      tint: p.visual,
-      intensity: glass,
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _detectedLabel != null
-                ? 'ORİJİNAL · ${_detectedLabel!} (otomatik)'
-                : 'ORİJİNAL',
-            style: HgType.sans(
-              11,
-              weight: 600,
-              color: p.faint,
-              letterSpacing: 0.3,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            src,
-            style: HgType.sans(13.5, color: p.sub, height: 1.35),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'ÇEVİRİ · ${_languages[_target]}',
-                  style: HgType.sans(
-                    11,
-                    weight: 600,
-                    color: p.faint,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ),
-              HgPressable(
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: translated));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Kopyalandı'),
-                      duration: Duration(seconds: 1),
-                    ),
-                  );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: HgIcon(
-                    HgIcons.copy,
-                    size: 16,
-                    color: p.faint,
-                    strokeWidth: 1.8,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            translated,
-            style: HgType.sans(18, weight: 700, color: p.text, height: 1.4),
-            maxLines: 4,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Görsel Çeviri dil seçimi alt sayfası (kaynak için "otomatik" dahil).
@@ -816,13 +750,27 @@ class _OcrLangSheet extends StatelessWidget {
               ),
               Text(title, style: HgType.serif(22, weight: 600, color: p.text)),
               const SizedBox(height: 6),
-              for (var i = 0; i < entries.length; i++)
-                _row(
-                  p,
-                  entries[i].key,
-                  entries[i].value,
-                  i < entries.length - 1,
+              // Liste taşmasın → kaydırılabilir (Mehmet 2026-06-19).
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.6,
                 ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < entries.length; i++)
+                        _row(
+                          p,
+                          entries[i].key,
+                          entries[i].value,
+                          i < entries.length - 1,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),

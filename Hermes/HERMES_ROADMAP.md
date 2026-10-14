@@ -127,7 +127,22 @@ Karar özetleri:
 
 ### Sıradaki tur açılışında ne yapılır
 
-**⭐ EN GÜNCEL (2026-06-13) — UI RESTYLE TUR 2 KALANI BİTTİ (a–f) + Görsel Çeviri Lens overhaul (analyze temiz, 196/196 test, arm64 debug APK build; CİHAZ SMOKE BEKLİYOR):**
+**⭐ EN GÜNCEL (2026-06-19) — SUNUM ÖNCESİ ANDROID POLISH TURU (analyze temiz, 209/209 test, debug APK Poco'ya kuruldu; CİHAZ SMOKE BEKLİYOR):**
+
+Sunum Android üzerinden yapılacağı için bir dizi UI/UX cilası + dil genişletme tek turda yapıldı (iOS dokunulmadı). Kararlar Mehmet: NLLB Manuel'de küratörlü ~34 dil; canlı modlara Vosk nl/ru/zh (Arapça canlı-STT yok, çeviri olarak var).
+- **A2 Tema geçişi** — fade 850→1300ms + `Curves.easeInOutCubic` (`main.dart`).
+- **B1/B2 Görsel Çeviri** — sonuç kartı cam opaklığı 42→66 + kaynak metin koyulaştı (okunur); foto-üstü baloncukta `FittedBox` (okunamaz küçülme) kaldırıldı → saran `Text`, uzunluğa göre 12/14 font + minHeight (`ocr_translate_screen.dart`).
+- **C1 NLLB ~34 dil** — yeni merkezi `lib/core/config/translation_languages.dart` (`kNllbLanguages`/`kMlkitLanguages`/`kLiveLanguages`); Manuel `_languages` tier'a göre dinamik (NLLB→geniş, Hızlı→ML Kit), tier değişince geçersiz seçili dil düzeltilir. NLLB motoru `_nllbCode` + `_langIds` genişledi — **token id = 256001 + FAIRSEQ index, 6 anchor + transformers tablosu ile doğrulandı** (tahmin yok). Tutarlılık testi eklendi.
+- **C2 Elegant TTS** — `getVoices` ile dil-başına enhanced/premium ses seçimi (`_applyBestVoice`), rate 0.5→0.46, `_localeMap` +~25 dil (`native_tts_engine.dart`).
+- **D2/D3/D4/D5/D6/D7 SmallTalk & Bas-konuş** — narration switch'i kaldırıldı (seslendirme yalnız baloncuk play); hands-free Android'de **Hızlı** varsayılan; hands-free TTS feedback guard (`_ttsSpeaking`/`_speakGuarded` — sistem kendini dinlemez); bas-konuş baloncuğunda seslendir butonu + `ConversationSessionManager.speak()`; `kPttDevOverlay=false`; mic ipucu yalnız ilk chat'e kadar; D1 SmallTalk dil seçimi tıkla-döngü→cam bottom-sheet picker.
+- **E1 Arşiv silme** — conference/smalltalk arşivde Dismissible (sola-kaydır) + onay → `deleteSession`; yeni `confirm_dialog.dart` (cam onay) + `HgIcons.trash`.
+- **E2 Oturum sonu sil** — conference/smalltalk/ptt ended view'a "Kaydetme, sil" (kaydet örtük kalır).
+- **E3 Crunch ETA** — `_CrunchProgressDialog` stateful, kümülatif-ortalama ile "kalan ~Xdk Ysn" (`crunch_runner.dart`).
+- **F Diller** — `vosk_models.dart`'a nl/ru/zh (mirror dosya adları WebFetch ile doğrulandı: nl-0.22/ru-0.22/cn-0.22; zh folder'ı `zh` ama dosya `cn`); ML Kit otomatik (enum). Ayarlar indirme listesi `byLang.values`'tan otomatik.
+
+**CİHAZ SMOKE BEKLİYOR (Mehmet, Poco cd61ba57):** launcher ikon (şeffaf logo + krem zemin, A1) · tema geçişi · OCR kart/baloncuk okunur · Manuel NLLB ~34 dil + elegant TTS · SmallTalk dropdown + Hızlı default + narration yok + baloncuk play · bas-konuş dev overlay yok + mic ilk chat sonrası gizli · arşiv sola-kaydır sil · oturum sonu "Kaydetme, sil" · crunch %+kalan süre · nl/ru/zh canlı (Vosk indir) + ar çeviri. ⚠️ Dosya düzenlemede yalnız Edit/Write.
+
+**⭐ ÖNCEKİ (2026-06-13) — UI RESTYLE TUR 2 KALANI BİTTİ (a–f) + Görsel Çeviri Lens overhaul (analyze temiz, 196/196 test, arm64 debug APK build; CİHAZ SMOKE BEKLİYOR):**
 
 Tur 2'nin yarım kalan kalemleri (a–f) bu turda tamamlandı, hepsi liquid-glass HG:
 - **(a) PTT split** (`push_to_talk_screen.dart`) — HgScreen + warmup/running/ended/error fazları; split koruundu (üst yarı `RotatedBox(2)`, her yarı görünmez bas-konuş), cam balonlar (smalltalk tint), orta cam pill "SmallTalk · TR ⇄ EN" + hairline ayraç + Bitir; mic ipucu altta; tüm session/manager mantığı AYNEN.

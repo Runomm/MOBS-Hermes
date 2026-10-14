@@ -3,4 +3,5 @@
     <!-- Açılış (native launch) zemini — Flutter çizene kadarki pencere rengi.
          Liquid-glass mesh açık taban (#FCFBFF) ile aynı → siyah flaş yok. -->
     <color name="launch_bg">#FCFBFF</color>
+	<color name="ic_launcher_background">#F3ECD9</color>
 </resources>

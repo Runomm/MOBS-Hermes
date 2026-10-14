@@ -63,6 +63,10 @@ class WhisperLangIdTranscriber implements DualTranscriber {
   StreamSubscription<List<double>>? _finalSub;
   Future<void> _queue = Future<void>.value();
 
+  // TTS oynarken yakalanan segmenti işleme → kendi seslendirmesini transkripte
+  // çevirmesin (Mehmet 2026-06-19).
+  bool _muted = false;
+
   @override
   Stream<String> get partials => _partials.stream;
   @override
@@ -95,11 +99,14 @@ class WhisperLangIdTranscriber implements DualTranscriber {
   @override
   Future<void> start() async {
     _finalSub = _mic.finals.listen((samples) {
-      if (samples.isEmpty) return;
+      if (samples.isEmpty || _muted) return;
       _queue = _queue.then((_) => _process(samples));
     });
     await _mic.start();
   }
+
+  @override
+  void setMuted(bool muted) => _muted = muted;
 
   Future<void> _process(List<double> samples) async {
     File? wav;

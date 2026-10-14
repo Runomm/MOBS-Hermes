@@ -16,6 +16,7 @@ import '../../core/theme/hg_glass.dart';
 import '../../core/theme/hg_tokens.dart';
 import '../../core/theme/hg_typography.dart';
 import '../conference/conference_detail_screen.dart';
+import '../shared/confirm_dialog.dart';
 import '../shared/hg_icons.dart';
 import '../shared/hg_widgets.dart';
 
@@ -275,6 +276,24 @@ class _PushToTalkScreenState extends State<PushToTalkScreen> {
     );
   }
 
+  /// Oturum sonu "kaydedilsin mi?" — kaydet örtük; istenirse kaydı sil
+  /// (Mehmet 2026-06-19).
+  Future<void> _deleteEnded() async {
+    final id = _endedSessionId;
+    if (id == null) return;
+    final ok = await confirmAction(
+      context,
+      title: 'Kaydı sil',
+      message: 'Bu konuşmanın transkripti kaydedilmesin mi? Kayıt kalıcı '
+          'olarak silinecek.',
+      confirmLabel: 'Kaydetme, sil',
+    );
+    if (!ok) return;
+    await _repo.deleteSession(id);
+    if (!mounted) return;
+    Navigator.of(context).popUntil((r) => r.isFirst);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = HgPalette.of(context);
@@ -363,6 +382,7 @@ class _PushToTalkScreenState extends State<PushToTalkScreen> {
                   locked: _recordingSource == AudioSource.primary,
                   onPress: () => _press(AudioSource.secondary),
                   onRelease: _release,
+                  onPlay: (t, l) => _manager?.speak(t, l) ?? Future<void>.value(),
                 ),
               ),
             ),
@@ -375,6 +395,7 @@ class _PushToTalkScreenState extends State<PushToTalkScreen> {
                 locked: _recordingSource == AudioSource.secondary,
                 onPress: () => _press(AudioSource.primary),
                 onRelease: _release,
+                onPlay: (t, l) => _manager?.speak(t, l) ?? Future<void>.value(),
               ),
             ),
           ],
@@ -524,6 +545,20 @@ class _PushToTalkScreenState extends State<PushToTalkScreen> {
             label: 'Sonra',
             onTap: () => Navigator.of(context).popUntil((r) => r.isFirst),
           ),
+          const SizedBox(height: 8),
+          // Kaydet örtük (üstteki seçenekler kaydı tutar); buradan silinir.
+          Center(
+            child: HgPressable(
+              onTap: _deleteEnded,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                child: Text(
+                  'Kaydetme, sil',
+                  style: HgType.sans(13.5, weight: 700, color: p.manual),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -652,7 +687,7 @@ class _Entry {
 /// motoru/modeli + çeviri katmanı/modeli + son drop/hata teknik detayını ekrana
 /// basar (Mehmet 2026-06-06: "hangi motor/model kullanılıyor görünsün, ama
 /// release'de kaldıralım"). Son kullanıcıya gösterilmemeli. Bkz RELEASE_CHECKLIST.
-const bool kPttDevOverlay = true;
+const bool kPttDevOverlay = false;
 
 /// Bir ekran yarısı — tüm alan görünmez bas-konuş + bu tarafın okunur chat'i
 /// (hand-off §STHalf: cam balonlar + altta mic ipucu).
@@ -665,6 +700,7 @@ class _Half extends StatelessWidget {
     required this.locked,
     required this.onPress,
     required this.onRelease,
+    this.onPlay,
   });
 
   final AudioSource side;
@@ -674,6 +710,9 @@ class _Half extends StatelessWidget {
   final bool locked;
   final VoidCallback onPress;
   final VoidCallback onRelease;
+
+  /// Gelen çeviri baloncuğundaki seslendir butonu (Mehmet 2026-06-19).
+  final Future<void> Function(String text, String lang)? onPlay;
 
   ConversationParticipant get _owner => side == AudioSource.primary
       ? ConversationParticipant.sourceSpeaker
@@ -699,7 +738,10 @@ class _Half extends StatelessWidget {
           children: [
             Positioned.fill(child: _chat(p, ac)),
             if (recording) Positioned.fill(child: _RecordingOverlay(ac: ac)),
-            if (!recording)
+            // Mic ipucu yalnız HİÇ chat yokken (ilk konuşmaya kadar) görünür →
+            // chat başlayınca mic simgeleri + açıklama gizlenir, okunurluk artar
+            // (Mehmet 2026-06-19).
+            if (!recording && entries.isEmpty)
               Positioned(
                 bottom: 8,
                 left: 0,
@@ -769,6 +811,9 @@ class _Half extends StatelessWidget {
     required String text,
     required bool isOwn,
   }) {
+    // Gelen çeviri baloncuğu (karşının sözü, bu yarının dilinde) → seslendir
+    // butonu. Kendi sözcesinde buton yok.
+    final showPlay = !isOwn && onPlay != null && text.trim().isNotEmpty;
     return Align(
       alignment: isOwn ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -779,9 +824,33 @@ class _Half extends StatelessWidget {
           tint: ac,
           tintStrength: isOwn ? 0.7 : 0.4,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          child: Text(
-            text,
-            style: HgType.sans(15.5, weight: 600, color: p.text, height: 1.3),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Flexible(
+                child: Text(
+                  text,
+                  style:
+                      HgType.sans(15.5, weight: 600, color: p.text, height: 1.3),
+                ),
+              ),
+              if (showPlay) ...[
+                const SizedBox(width: 8),
+                HgPressable(
+                  onTap: () => onPlay!(text, language),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: HgIcon(
+                      HgIcons.speaker,
+                      size: 17,
+                      color: ac,
+                      strokeWidth: 1.8,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),

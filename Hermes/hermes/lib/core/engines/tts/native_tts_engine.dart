@@ -24,6 +24,36 @@ class NativeOsTtsEngine implements TtsEngine {
     'fr': 'fr-FR',
     'de': 'de-DE',
     'it': 'it-IT',
+    // 2026-06-19: yeni diller (ML Kit/NLLB ile uyumlu).
+    'nl': 'nl-NL',
+    'ru': 'ru-RU',
+    'zh': 'zh-CN',
+    'ar': 'ar-SA',
+    'pt': 'pt-PT',
+    'pl': 'pl-PL',
+    'uk': 'uk-UA',
+    'ja': 'ja-JP',
+    'ko': 'ko-KR',
+    'el': 'el-GR',
+    'sv': 'sv-SE',
+    'da': 'da-DK',
+    'no': 'nb-NO',
+    'fi': 'fi-FI',
+    'cs': 'cs-CZ',
+    'ro': 'ro-RO',
+    'hu': 'hu-HU',
+    'bg': 'bg-BG',
+    'hr': 'hr-HR',
+    'sk': 'sk-SK',
+    'id': 'id-ID',
+    'vi': 'vi-VN',
+    'th': 'th-TH',
+    'hi': 'hi-IN',
+    'fa': 'fa-IR',
+    'he': 'he-IL',
+    'sr': 'sr-RS',
+    'az': 'az-AZ',
+    'ka': 'ka-GE',
   };
 
   @override
@@ -41,7 +71,8 @@ class NativeOsTtsEngine implements TtsEngine {
 
     // Sentez tamamlanana kadar speak() bekler — sıralı çağrılar için kritik.
     await _tts.awaitSpeakCompletion(true);
-    await _tts.setSpeechRate(0.5); // 0.0–1.0; 0.5 doğal hız
+    // Biraz daha sakin/elegant tempo (Mehmet 2026-06-19).
+    await _tts.setSpeechRate(0.46); // 0.0–1.0
     await _tts.setVolume(1.0);
     await _tts.setPitch(1.0);
 
@@ -63,6 +94,9 @@ class NativeOsTtsEngine implements TtsEngine {
       final available = await _tts.isLanguageAvailable(tag);
       if (available == true) {
         await _tts.setLanguage(tag);
+        // Daha elegant/doğal ses: bu dil için varsa enhanced/premium/neural
+        // sesi seç (yoksa sistem varsayılanı kalır). Mehmet 2026-06-19.
+        await _applyBestVoice(tag);
         _currentLanguageTag = tag;
       } else {
         throw Exception('TTS bu dil için ses paketi bulamadı: $tag');
@@ -70,6 +104,47 @@ class NativeOsTtsEngine implements TtsEngine {
     }
 
     await _tts.speak(text);
+  }
+
+  /// Verilen locale için cihazda yüklü **en kaliteli** sesi seçer (enhanced/
+  /// premium/neural/network/wavenet adı geçenler öncelikli; tam bölge eşleşmesi
+  /// bonus). Bulamazsa sistem varsayılanına dokunmaz. Best-effort (hata yutulur).
+  Future<void> _applyBestVoice(String tag) async {
+    try {
+      final voices = await _tts.getVoices;
+      if (voices is! List) return;
+      final prefix = tag.split(RegExp('[-_]')).first.toLowerCase();
+      final tagLower = tag.toLowerCase();
+      Map<String, String>? best;
+      var bestScore = -1;
+      for (final v in voices) {
+        if (v is! Map) continue;
+        final locale = (v['locale'] ?? '').toString().toLowerCase();
+        if (!locale.startsWith(prefix)) continue;
+        final name = (v['name'] ?? '').toString().toLowerCase();
+        var score = 0;
+        if (locale == tagLower) score += 2;
+        if (name.contains('enhanced') ||
+            name.contains('premium') ||
+            name.contains('neural') ||
+            name.contains('network') ||
+            name.contains('wavenet')) {
+          score += 5;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          best = {
+            'name': (v['name'] ?? '').toString(),
+            'locale': (v['locale'] ?? '').toString(),
+          };
+        }
+      }
+      if (best != null && bestScore > 0 && best['name']!.isNotEmpty) {
+        await _tts.setVoice(best);
+      }
+    } catch (_) {
+      // Ses seçimi best-effort — başarısızsa varsayılan ses kullanılır.
+    }
   }
 
   @override

@@ -15,8 +15,8 @@ class GeminiClient {
   GeminiClient(this.apiKey, {this.model = defaultModel, http.Client? client})
       : _client = client ?? http.Client();
 
-  /// Hızlı + ücretsiz katmanda erişilebilir; gerekirse değiştirilebilir.
-  static const String defaultModel = 'gemini-2.0-flash';
+  /// Mehmet 2026-06-19: API yalnız bu modeli destekliyor → gemini-2.5-flash.
+  static const String defaultModel = 'gemini-2.5-flash';
 
   final String apiKey;
   final String model;

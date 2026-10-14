@@ -9,6 +9,7 @@ import '../conference/conference_detail_screen.dart';
 import '../conference/conference_format.dart';
 import '../shared/hg_icons.dart';
 import '../shared/hg_widgets.dart';
+import '../shared/swipe_to_delete.dart';
 
 /// SmallTalk arşivi / klasörü (S1) — liquid-glass `ArchiveScreen` stili
 /// (2026-06-12 restyle). Hem **hands-free** (`voiceTranslator`) hem **bas
@@ -63,6 +64,14 @@ class _SmallTalkArchiveScreenState extends State<SmallTalkArchiveScreen> {
     await _load();
   }
 
+  /// Kaydı sil (swipe → çöp). Mehmet 2026-06-19: pop-up yerine sola-kaydır UX.
+  Future<void> _delete(SessionRow s) async {
+    await _repo.deleteSession(s.id);
+    if (mounted) {
+      setState(() => _sessions = _sessions.where((x) => x.id != s.id).toList());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = HgPalette.of(context);
@@ -80,10 +89,21 @@ class _SmallTalkArchiveScreenState extends State<SmallTalkArchiveScreen> {
                 ? Center(child: CircularProgressIndicator(color: p.smalltalk))
                 : _sessions.isEmpty
                 ? _empty(p)
-                : ListView.builder(
-                    padding: const EdgeInsets.only(top: 2, bottom: 8),
-                    itemCount: _sessions.length,
-                    itemBuilder: (context, i) => _row(p, _sessions[i]),
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: SwipeDeleteHint(),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          itemCount: _sessions.length,
+                          itemBuilder: (context, i) => _row(p, _sessions[i]),
+                        ),
+                      ),
+                    ],
                   ),
           ),
         ],
@@ -112,7 +132,9 @@ class _SmallTalkArchiveScreenState extends State<SmallTalkArchiveScreen> {
     final date = ConferenceFormat.date(s.startedAt);
     final title = crunched ? (s.crunchTitle ?? 'SmallTalk') : date;
     final isPtt = s.mode == SessionMode.pushToTalk.dbValue;
-    return Padding(
+    return SwipeToDelete(
+      onDelete: () => _delete(s),
+      child: Padding(
       padding: const EdgeInsets.only(bottom: 11),
       child: HgPressable(
         onTap: () => _open(s),
@@ -165,6 +187,7 @@ class _SmallTalkArchiveScreenState extends State<SmallTalkArchiveScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

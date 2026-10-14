@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../core/config/translation_languages.dart';
 import '../../core/engines/translation/translation_tier.dart';
 import '../../core/theme/hg_glass.dart';
 import '../../core/theme/hg_tokens.dart';
@@ -25,13 +26,9 @@ class ConferenceSetupScreen extends StatefulWidget {
 }
 
 class _ConferenceSetupScreenState extends State<ConferenceSetupScreen> {
-  static const _languages = <String, String>{
-    'tr': 'Türkçe',
-    'en': 'İngilizce',
-    'es': 'İspanyolca',
-    'de': 'Almanca',
-    'fr': 'Fransızca',
-  };
+  // Canlı modlar Vosk STT'ye bağlı → yalnız Vosk modeli olan diller (nl/ru/zh
+  // eklendi, 2026-06-19). Merkezi liste.
+  static const _languages = kLiveLanguages;
   static const _steps = ['Diller', 'Seslendirme', 'Kalite'];
 
   int _step = 0;

@@ -15,6 +15,7 @@ class FakeDualTranscriber implements DualTranscriber {
   final _finals = StreamController<DualTranscript>.broadcast();
   bool started = false;
   bool stopped = false;
+  bool muted = false;
 
   @override
   Stream<String> get partials => _partials.stream;
@@ -26,6 +27,8 @@ class FakeDualTranscriber implements DualTranscriber {
   Future<void> start() async => started = true;
   @override
   Future<void> stop() async => stopped = true;
+  @override
+  void setMuted(bool m) => muted = m;
   @override
   Future<void> dispose() async {
     if (!_partials.isClosed) await _partials.close();
